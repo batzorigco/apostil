@@ -18,13 +18,13 @@ Pin-and-comment feedback overlay for React & Next.js. Let your team leave contex
 ### 1. Install
 
 ```bash
-npm install apostil
+npm install apostil        # or: pnpm add apostil / yarn add apostil
 ```
 
 ### 2. Initialize
 
 ```bash
-npx apostil init
+npx apostil init           # or: pnpm exec apostil init
 ```
 
 This will:
