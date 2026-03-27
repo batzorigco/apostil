@@ -19,22 +19,29 @@
     "collaboration"
   ],
   "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
     },
     "./adapters/localStorage": {
       "types": "./dist/adapters/localStorage.d.ts",
-      "import": "./dist/adapters/localStorage.js"
+      "import": "./dist/adapters/localStorage.js",
+      "require": "./dist/adapters/localStorage.cjs"
     },
     "./adapters/rest": {
       "types": "./dist/adapters/rest.d.ts",
-      "import": "./dist/adapters/rest.js"
+      "import": "./dist/adapters/rest.js",
+      "require": "./dist/adapters/rest.cjs"
     },
     "./adapters/nextjs": {
       "types": "./dist/adapters/nextjs.d.ts",
-      "import": "./dist/adapters/nextjs.js"
+      "import": "./dist/adapters/nextjs.js",
+      "require": "./dist/adapters/nextjs.cjs"
     }
   },
   "bin": {

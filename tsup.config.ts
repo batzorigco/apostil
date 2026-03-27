@@ -8,12 +8,12 @@ export default defineConfig([
       "adapters/localStorage": "src/adapters/localStorage.ts",
       "adapters/rest": "src/adapters/rest.ts",
     },
-    format: ["esm"],
+    format: ["esm", "cjs"],
     dts: true,
     sourcemap: true,
     clean: true,
     external: ["react", "react-dom"],
-    banner: { js: '"use client";' },
+    banner: (ctx) => ctx.format === "esm" ? { js: '"use client";' } : {},
   },
   // Server-side (Next.js adapter + CLI)
   {
@@ -21,7 +21,7 @@ export default defineConfig([
       "adapters/nextjs": "src/adapters/nextjs.ts",
       "cli/index": "src/cli/index.ts",
     },
-    format: ["esm"],
+    format: ["esm", "cjs"],
     dts: true,
     sourcemap: true,
     external: ["react", "react-dom", "fs", "path"],
