@@ -245,9 +245,9 @@ export function CommentPin({
   overlayRef: RefObject<HTMLDivElement | null>;
 }) {
   if (thread.targetId) {
-    return <TargetedPin thread={thread} index={index} />;
+    return <TargetedPin key={`targeted-${thread.id}`} thread={thread} index={index} />;
   }
-  return <OverlayPin thread={thread} index={index} overlayRef={overlayRef} />;
+  return <OverlayPin key={`overlay-${thread.id}`} thread={thread} index={index} overlayRef={overlayRef} />;
 }
 
 export { resolvePosition, findTargetElement };
