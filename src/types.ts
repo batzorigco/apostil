@@ -1,19 +1,19 @@
-export type RemarqUser = {
+export type ApostilUser = {
   id: string;
   name: string;
   avatar?: string;
   color: string;
 };
 
-export type RemarqComment = {
+export type ApostilComment = {
   id: string;
   threadId: string;
-  author: RemarqUser;
+  author: ApostilUser;
   body: string;
   createdAt: string;
 };
 
-export type RemarqThread = {
+export type ApostilThread = {
   id: string;
   pageId: string;
   pinX: number;
@@ -21,11 +21,11 @@ export type RemarqThread = {
   targetId?: string;
   targetLabel?: string;
   resolved: boolean;
-  comments: RemarqComment[];
+  comments: ApostilComment[];
   createdAt: string;
 };
 
-export type RemarqStorage = {
-  load(pageId: string): Promise<RemarqThread[]>;
-  save(pageId: string, threads: RemarqThread[]): Promise<void>;
+export type ApostilStorage = {
+  load(pageId: string): Promise<ApostilThread[]>;
+  save(pageId: string, threads: ApostilThread[]): Promise<void>;
 };

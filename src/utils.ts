@@ -4,7 +4,7 @@ export function generateId(): string {
   return `${Date.now()}-${++counter}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
-const USER_KEY = "remarq-user";
+const USER_KEY = "apostil-user";
 
 export function loadUser(): { id: string; name: string; color: string } | null {
   if (typeof window === "undefined") return null;

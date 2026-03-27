@@ -1,9 +1,9 @@
 "use client";
 
-import { useRemarq } from "../context";
+import { useApostil } from "../context";
 
 export function useCommentMode() {
-  const { commentMode, setCommentMode, sidebarOpen, setSidebarOpen } = useRemarq();
+  const { commentMode, setCommentMode, sidebarOpen, setSidebarOpen } = useApostil();
 
   return {
     commentMode,

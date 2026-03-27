@@ -1,12 +1,12 @@
 {
-  "name": "remarq",
+  "name": "apostil",
   "version": "0.1.0",
   "description": "Pin-and-comment feedback overlay for design prototypes and web apps",
   "license": "MIT",
   "author": "Batzorigco",
   "repository": {
     "type": "git",
-    "url": "https://github.com/batzorigco/remarq.git"
+    "url": "https://github.com/batzorigco/apostil.git"
   },
   "keywords": [
     "comments",
@@ -35,14 +35,10 @@
     "./adapters/nextjs": {
       "types": "./dist/adapters/nextjs.d.ts",
       "import": "./dist/adapters/nextjs.js"
-    },
-    "./adapters/global": {
-      "types": "./dist/adapters/global.d.ts",
-      "import": "./dist/adapters/global.js"
     }
   },
   "bin": {
-    "remarq": "./bin/remarq.js"
+    "apostil": "./bin/apostil.js"
   },
   "files": [
     "dist",

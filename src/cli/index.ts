@@ -19,270 +19,277 @@ if (command === "init") {
 
 function printHelp() {
   console.log(`
-  remarq — Pin-and-comment feedback for your app
+  apostil — Pin-and-comment feedback for React & Next.js
 
   Usage:
-    remarq init [mode]    Set up remarq in this project
-    remarq remove         Remove remarq from this project
-    remarq help           Show this help
-
-  Modes:
-    --dev        Default. Active in dev + staging only.
-                 Comments gitignored, route committed.
-                 Force on staging: NEXT_PUBLIC_REMARQ=true
-
-    --personal   Active in local dev only. Everything gitignored.
-                 Your private feedback, nothing in git.
-
-    --public     Active in ALL environments including production.
-                 Comments committed to git.
-                 Disable: NEXT_PUBLIC_REMARQ=false
-  `);
+    npx apostil init      Set up apostil in your Next.js project
+    npx apostil remove    Remove apostil from your project
+    npx apostil help      Show this help
+`);
 }
-
-type Mode = "dev" | "personal" | "public";
-
-function getMode(): Mode {
-  if (args.includes("--personal")) return "personal";
-  if (args.includes("--public")) return "public";
-  return "dev";
-}
-
-// ── remarq init ──────────────────────────────────────────────
 
 async function init() {
   const cwd = process.cwd();
-  const mode = getMode();
 
-  console.log(`\n  Setting up remarq (${mode} mode)...\n`);
-
-  // 1. Create .remarq/ directory
-  await fs.mkdir(path.join(cwd, ".remarq"), { recursive: true });
-  console.log("  ✓ Created .remarq/ directory");
-
-  // 2. Update .gitignore based on mode
-  await updateGitignore(cwd, mode);
-
-  // 3. Detect framework
-  const framework = await detectFramework(cwd);
-
-  // 4. Check if package is installed
-  const hasPackage = await checkDependency(cwd);
-  if (!hasPackage) {
-    console.log("  → Run: npm install remarq");
+  // Detect Next.js app directory
+  const appDir = await findAppDir(cwd);
+  if (!appDir) {
+    console.log("  Could not find a Next.js app/ directory.");
+    console.log("  Make sure you're running this from your project root.\n");
+    process.exit(1);
   }
 
-  // 5. Framework-specific setup
-  if (framework === "nextjs") {
-    const routeCreated = await setupNextjs(cwd);
-    const wrapperCreated = await createWrapper(cwd, mode);
+  // Detect src/ prefix
+  const useSrc = appDir.includes("src/app");
 
-    if (!routeCreated && !wrapperCreated) {
-      console.log("\n  remarq is already set up. Run your dev server and press C to comment.\n");
-    } else {
-      console.log(`
-  Done! Add one line to your root layout:
+  console.log("\n  Setting up apostil...\n");
 
-  import { RemarqWrapper } from "@/components/remarq-wrapper";
-
-  export default function Layout({ children }) {
-    return (
-      <html>
-        <body>
-          <RemarqWrapper>{children}</RemarqWrapper>
-        </body>
-      </html>
-    );
-  }
-
-  Mode: ${mode}
-  Run your dev server and press C to comment.
-`);
-    }
+  // 1. Create API route
+  const apiDir = path.join(appDir, "api", "apostil");
+  const apiFile = path.join(apiDir, "route.ts");
+  if (await fileExists(apiFile)) {
+    console.log("  ✓ API route already exists");
   } else {
-    console.log("\n  Done! Add remarq to your app and run your dev server.\n");
+    await fs.mkdir(apiDir, { recursive: true });
+    await fs.writeFile(
+      apiFile,
+      `export { GET, POST } from "apostil/adapters/nextjs";\n`,
+      "utf-8"
+    );
+    console.log("  ✓ Created ${rel(cwd, apiFile)}");
   }
+
+  // 2. Create wrapper component
+  const componentsDir = path.join(cwd, useSrc ? "src/components" : "components");
+  const wrapperFile = path.join(componentsDir, "apostil-wrapper.tsx");
+  if (await fileExists(wrapperFile)) {
+    console.log("  ✓ Wrapper component already exists");
+  } else {
+    await fs.mkdir(componentsDir, { recursive: true });
+    await fs.writeFile(wrapperFile, getWrapperComponent(), "utf-8");
+    console.log(`  ✓ Created ${rel(cwd, wrapperFile)}`);
+  }
+
+  // 3. Create .apostil/ directory for comment storage
+  const commentsDir = path.join(cwd, ".apostil");
+  await fs.mkdir(commentsDir, { recursive: true });
+  console.log("  ✓ Created .apostil/ directory");
+
+  // 4. Add .apostil/ to .gitignore
+  const gitignorePath = path.join(cwd, ".gitignore");
+  let gitignore = "";
+  try {
+    gitignore = await fs.readFile(gitignorePath, "utf-8");
+  } catch {}
+
+  if (!gitignore.includes(".apostil")) {
+    const entry = "\n# Apostil comments\n.apostil/\n";
+    await fs.appendFile(gitignorePath, entry, "utf-8");
+    console.log("  ✓ Added .apostil/ to .gitignore");
+  } else {
+    console.log("  ✓ .gitignore already configured");
+  }
+
+  // 5. Inject wrapper into root layout
+  const layoutInjected = await injectIntoLayout(appDir, useSrc);
+  if (layoutInjected) {
+    console.log(`  ✓ Added <ApostilWrapper> to root layout`);
+  }
+
+  console.log("\n  Done! Run your dev server and press C to start commenting.\n");
 }
-
-
-// ── remarq remove ────────────────────────────────────────────
 
 async function remove() {
   const cwd = process.cwd();
-  console.log("\n  Removing remarq...\n");
+  const appDir = await findAppDir(cwd);
+  const useSrc = appDir?.includes("src/app") ?? false;
 
-  const routePaths = [
-    path.join(cwd, "src", "app", "api", "remarq"),
-    path.join(cwd, "app", "api", "remarq"),
-  ];
-  for (const p of routePaths) {
-    try {
-      await fs.rm(p, { recursive: true });
-      console.log("  ✓ Removed api/remarq/ route");
-    } catch {}
+  console.log("\n  Removing apostil...\n");
+
+  // 1. Remove API route
+  if (appDir) {
+    const apiDir = path.join(appDir, "api", "apostil");
+    if (await fileExists(path.join(apiDir, "route.ts"))) {
+      await fs.rm(apiDir, { recursive: true });
+      console.log("  ✓ Removed API route");
+    }
   }
 
-  // Clean gitignore
+  // 2. Remove wrapper component
+  const componentsDir = path.join(cwd, useSrc ? "src/components" : "components");
+  const wrapperFile = path.join(componentsDir, "apostil-wrapper.tsx");
+  if (await fileExists(wrapperFile)) {
+    await fs.rm(wrapperFile);
+    console.log("  ✓ Removed wrapper component");
+  }
+
+  // 3. Remove wrapper from layout
+  if (appDir) {
+    const unwrapped = await removeFromLayout(appDir);
+    if (unwrapped) {
+      console.log("  ✓ Removed <ApostilWrapper> from root layout");
+    }
+  }
+
+  // 4. Remove .apostil/ directory
+  const commentsDir = path.join(cwd, ".apostil");
+  if (await fileExists(commentsDir)) {
+    await fs.rm(commentsDir, { recursive: true });
+    console.log("  ✓ Removed .apostil/ directory");
+  }
+
+  // 5. Remove from .gitignore
   const gitignorePath = path.join(cwd, ".gitignore");
   try {
-    let content = await fs.readFile(gitignorePath, "utf-8");
-    content = content.replace(/\n# Remarq[^\n]*\n[^\n]*\n?/g, "\n");
-    content = content.replace(/\n# Remarq[^\n]*\n/g, "\n");
-    await fs.writeFile(gitignorePath, content, "utf-8");
+    let gitignore = await fs.readFile(gitignorePath, "utf-8");
+    gitignore = gitignore.replace(/\n?# Apostil comments\n\.apostil\/\n?/g, "");
+    await fs.writeFile(gitignorePath, gitignore, "utf-8");
     console.log("  ✓ Cleaned .gitignore");
   } catch {}
 
   console.log(`
-  Done. You can also:
-  - Remove .remarq/ directory (deletes all comments)
-  - Remove remarq imports from your layout
-  - Run: npm uninstall remarq
+  Done! Now run: npm uninstall apostil
 `);
 }
 
-// ── Helpers ──────────────────────────────────────────────────
+// --- Wrapper component template ---
 
-async function detectFramework(cwd: string): Promise<string | null> {
-  try {
-    const pkg = JSON.parse(await fs.readFile(path.join(cwd, "package.json"), "utf-8"));
-    const deps = { ...pkg.dependencies, ...pkg.devDependencies };
-    if (deps["next"]) return "nextjs";
-    return null;
-  } catch {
-    return null;
-  }
-}
+function getWrapperComponent(): string {
+  return `"use client";
 
-async function checkDependency(cwd: string): Promise<boolean> {
-  try {
-    const pkg = JSON.parse(await fs.readFile(path.join(cwd, "package.json"), "utf-8"));
-    const deps = { ...pkg.dependencies, ...pkg.devDependencies };
-    return !!deps["remarq"];
-  } catch {
-    return false;
-  }
-}
-
-async function updateGitignore(cwd: string, mode: Mode) {
-  const gitignorePath = path.join(cwd, ".gitignore");
-  let content = "";
-  try { content = await fs.readFile(gitignorePath, "utf-8"); } catch {}
-
-  // Remove any existing remarq entries
-  content = content.replace(/\n# Remarq[^\n]*\n[^\n]*\n?/g, "\n");
-
-  // Add based on mode
-  switch (mode) {
-    case "dev":
-      // Ignore comments, keep route
-      if (!content.includes(".remarq/")) {
-        content += "\n# Remarq comments (local only)\n.remarq/\n";
-      }
-      console.log("  ✓ .remarq/ added to .gitignore (comments are local)");
-      break;
-
-    case "personal":
-      // Ignore everything
-      if (!content.includes(".remarq/")) {
-        content += "\n# Remarq (personal mode)\n.remarq/\napp/api/remarq/\nsrc/app/api/remarq/\n";
-      }
-      console.log("  ✓ .remarq/ and api route added to .gitignore (fully private)");
-      break;
-
-    case "public":
-      // Don't ignore anything — comments are shared
-      console.log("  · .remarq/ will be committed to git (public mode)");
-      break;
-  }
-
-  await fs.writeFile(gitignorePath, content, "utf-8");
-}
-
-async function createWrapper(cwd: string, mode: Mode): Promise<boolean> {
-  const dirs = [
-    path.join(cwd, "src", "components"),
-    path.join(cwd, "components"),
-  ];
-  let compDir: string | null = null;
-  for (const d of dirs) {
-    try { await fs.access(d); compDir = d; break; } catch {}
-  }
-  if (!compDir) {
-    compDir = path.join(cwd, "src", "components");
-    await fs.mkdir(compDir, { recursive: true });
-  }
-
-  const wrapperFile = path.join(compDir, "remarq-wrapper.tsx");
-  try {
-    await fs.access(wrapperFile);
-    return false;
-  } catch {
-    // Environment guard based on mode
-    const envGuard = mode === "public"
-      ? `// Public mode: remarq runs in all environments
-  const enabled = process.env.NEXT_PUBLIC_REMARQ !== "false";`
-      : mode === "personal"
-      ? `// Personal mode: only runs locally
-  const enabled = process.env.NODE_ENV === "development" && !process.env.CI;`
-      : `// Dev mode: runs in development and staging
-  const enabled = process.env.NODE_ENV !== "production" || process.env.NEXT_PUBLIC_REMARQ === "true";`;
-
-    await fs.writeFile(wrapperFile, `"use client";
-
-import { RemarqProvider, CommentOverlay, CommentToggle, CommentSidebar } from "remarq";
 import { usePathname } from "next/navigation";
+import {
+  ApostilProvider,
+  CommentOverlay,
+  CommentToggle,
+  CommentSidebar,
+} from "apostil";
 
-export function RemarqWrapper({ children }: { children: React.ReactNode }) {
+export function ApostilWrapper({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-
-  ${envGuard}
-
-  if (!enabled) return <>{children}</>;
+  const pageId = pathname.replace(/\\//g, "--").replace(/^--/, "") || "home";
 
   return (
-    <RemarqProvider pageId={pathname}>
-      <div style={{ position: "relative", width: "100%", height: "100%" }}>
-        {children}
-        <CommentOverlay />
-        <CommentSidebar />
-        <CommentToggle />
-      </div>
-    </RemarqProvider>
+    <ApostilProvider pageId={pageId}>
+      {children}
+      <CommentOverlay />
+      <CommentSidebar />
+      <CommentToggle />
+    </ApostilProvider>
   );
 }
-`, "utf-8");
-    console.log("  ✓ Created components/remarq-wrapper.tsx");
-    return true;
-  }
+`;
 }
 
-async function setupNextjs(cwd: string): Promise<boolean> {
-  const appDir = path.join(cwd, "src", "app");
-  const appDirAlt = path.join(cwd, "app");
-  let routeDir: string;
+// --- Layout injection ---
 
-  try {
-    await fs.access(appDir);
-    routeDir = path.join(appDir, "api", "remarq");
-  } catch {
-    try {
-      await fs.access(appDirAlt);
-      routeDir = path.join(appDirAlt, "api", "remarq");
-    } catch {
-      console.log("  · Could not find app/ directory");
+async function injectIntoLayout(appDir: string, useSrc: boolean): Promise<boolean> {
+  const layoutPath = await findLayout(appDir);
+  if (!layoutPath) return false;
+
+  let content = await fs.readFile(layoutPath, "utf-8");
+
+  // Skip if already injected
+  if (content.includes("ApostilWrapper")) {
+    console.log("  ✓ Layout already has <ApostilWrapper>");
+    return false;
+  }
+
+  // Add import at the top (after existing imports or "use" directives)
+  const importPath = useSrc ? "@/components/apostil-wrapper" : "../components/apostil-wrapper";
+  const importLine = `import { ApostilWrapper } from "${importPath}";\n`;
+
+  // Find the last import statement and insert after it
+  const importRegex = /^import\s.+$/gm;
+  let lastImportIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = importRegex.exec(content)) !== null) {
+    lastImportIndex = match.index + match[0].length;
+  }
+
+  if (lastImportIndex > 0) {
+    content = content.slice(0, lastImportIndex) + "\n" + importLine + content.slice(lastImportIndex);
+  } else {
+    // No imports found, add at the top (after "use client" or "use server" if present)
+    const useDirective = content.match(/^["']use (client|server)["'];?\n/);
+    const insertAt = useDirective ? useDirective[0].length : 0;
+    content = content.slice(0, insertAt) + importLine + content.slice(insertAt);
+  }
+
+  // Wrap {children} with <ApostilWrapper>
+  // Handle both {children} and { children } patterns inside <body>
+  const bodyChildrenRegex = /(<body[^>]*>)([\s\S]*?)(\{[\s]*children[\s]*\})([\s\S]*?)(<\/body>)/;
+  const bodyMatch = content.match(bodyChildrenRegex);
+
+  if (bodyMatch) {
+    // Wrap {children} inside <body> with <ApostilWrapper>
+    content = content.replace(
+      bodyChildrenRegex,
+      `$1$2<ApostilWrapper>$3</ApostilWrapper>$4$5`
+    );
+  } else {
+    // Fallback: try to find {children} anywhere and wrap it
+    const childrenRegex = /(\{[\s]*children[\s]*\})/;
+    if (childrenRegex.test(content)) {
+      content = content.replace(childrenRegex, `<ApostilWrapper>$1</ApostilWrapper>`);
+    } else {
+      console.log("  ⚠ Could not find {children} in layout — add <ApostilWrapper> manually");
       return false;
     }
   }
 
-  await fs.mkdir(routeDir, { recursive: true });
-  const routeFile = path.join(routeDir, "route.ts");
+  await fs.writeFile(layoutPath, content, "utf-8");
+  return true;
+}
 
-  try {
-    await fs.access(routeFile);
-    return false;
-  } catch {
-    await fs.writeFile(routeFile, `export { GET, POST } from "remarq/adapters/nextjs";\n`, "utf-8");
-    console.log("  ✓ Created api/remarq/route.ts");
-    return true;
+async function removeFromLayout(appDir: string): Promise<boolean> {
+  const layoutPath = await findLayout(appDir);
+  if (!layoutPath) return false;
+
+  let content = await fs.readFile(layoutPath, "utf-8");
+
+  if (!content.includes("ApostilWrapper")) return false;
+
+  // Remove import line
+  content = content.replace(/import\s*\{[^}]*ApostilWrapper[^}]*\}\s*from\s*["'][^"']+["'];?\n?/g, "");
+
+  // Unwrap <ApostilWrapper>{children}</ApostilWrapper>
+  content = content.replace(/<ApostilWrapper>([\s\S]*?)<\/ApostilWrapper>/g, "$1");
+
+  await fs.writeFile(layoutPath, content, "utf-8");
+  return true;
+}
+
+// --- Helpers ---
+
+async function findAppDir(cwd: string): Promise<string | null> {
+  for (const candidate of ["src/app", "app"]) {
+    const dir = path.join(cwd, candidate);
+    try {
+      const stat = await fs.stat(dir);
+      if (stat.isDirectory()) return dir;
+    } catch {}
   }
+  return null;
+}
+
+async function findLayout(appDir: string): Promise<string | null> {
+  for (const ext of ["tsx", "jsx", "ts", "js"]) {
+    const file = path.join(appDir, `layout.${ext}`);
+    if (await fileExists(file)) return file;
+  }
+  return null;
+}
+
+async function fileExists(p: string): Promise<boolean> {
+  try {
+    await fs.stat(p);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function rel(cwd: string, filePath: string): string {
+  return path.relative(cwd, filePath);
 }

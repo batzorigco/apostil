@@ -2,8 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { X, Check, Undo2, MessageSquare, Globe, FileText } from "lucide-react";
-import { useRemarq } from "../context";
-import type { RemarqThread } from "../types";
+import { useApostil } from "../context";
+import type { ApostilThread } from "../types";
 
 function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -20,7 +20,7 @@ function pageIdToDisplay(pageId: string): string {
   return pageId.replace(/--/g, "/").replace(/-/g, ".");
 }
 
-type AllPagesData = { pageId: string; threads: RemarqThread[] }[];
+type AllPagesData = { pageId: string; threads: ApostilThread[] }[];
 
 export function CommentSidebar() {
   const {
@@ -29,7 +29,7 @@ export function CommentSidebar() {
     setSidebarOpen,
     setActiveThreadId,
     resolveThread,
-  } = useRemarq();
+  } = useApostil();
 
   const [tab, setTab] = useState<"page" | "all">("page");
   const [allPages, setAllPages] = useState<AllPagesData>([]);
@@ -44,7 +44,7 @@ export function CommentSidebar() {
     async function fetchAll() {
       // Fetch from the app's own API route (no pageId = returns all pages)
       try {
-        const res = await fetch("/api/remarq");
+        const res = await fetch("/api/apostil");
         if (res.ok) {
           const data = await res.json();
           setAllPages(data);
@@ -139,9 +139,9 @@ function PageThreads({
   onSelect,
   onResolve,
 }: {
-  threads: RemarqThread[];
-  openThreads: RemarqThread[];
-  resolvedThreads: RemarqThread[];
+  threads: ApostilThread[];
+  openThreads: ApostilThread[];
+  resolvedThreads: ApostilThread[];
   onSelect: (id: string) => void;
   onResolve: (id: string) => void;
 }) {
@@ -264,7 +264,7 @@ function AllPagesView({
                   onClick={() => {
                     // Navigate to the page with the comment hash
                     const path = "/" + page.pageId.replace(/--/g, "/");
-                    window.location.href = path + "#remarq-" + thread.id;
+                    window.location.href = path + "#apostil-" + thread.id;
                   }}
                   className={`px-4 py-2.5 border-b border-neutral-50 cursor-pointer hover:bg-neutral-50 transition-colors ${
                     isResolved ? "opacity-50" : ""

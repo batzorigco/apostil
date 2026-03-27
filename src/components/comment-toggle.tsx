@@ -1,7 +1,7 @@
 "use client";
 
 import { MessageSquare, List, X } from "lucide-react";
-import { useRemarq } from "../context";
+import { useApostil } from "../context";
 
 export function CommentToggle() {
   const {
@@ -11,7 +11,7 @@ export function CommentToggle() {
     setSidebarOpen,
     unresolvedCount,
     setActiveThreadId,
-  } = useRemarq();
+  } = useApostil();
 
   return (
     <div className="absolute bottom-5 right-5 z-[65] flex flex-col gap-2 items-end">

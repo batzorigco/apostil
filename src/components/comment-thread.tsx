@@ -2,10 +2,10 @@
 
 import { useEffect, useRef, useState, useCallback, type RefObject } from "react";
 import { Check, Trash2, Undo2 } from "lucide-react";
-import { useRemarq } from "../context";
+import { useApostil } from "../context";
 import { CommentComposer } from "./comment-composer";
 import { resolvePosition } from "./comment-pin";
-import type { RemarqThread as RemarqThreadType } from "../types";
+import type { ApostilThread as ApostilThreadType } from "../types";
 
 function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -18,15 +18,15 @@ function timeAgo(iso: string): string {
   return `${days}d ago`;
 }
 
-export function RemarqThreadPopover({
+export function ApostilThreadPopover({
   thread,
   overlayRef,
 }: {
-  thread: RemarqThreadType;
+  thread: ApostilThreadType;
   overlayRef: RefObject<HTMLDivElement | null>;
 }) {
   const { activeThreadId, setActiveThreadId, addReply, resolveThread, deleteThread, user } =
-    useRemarq();
+    useApostil();
   const ref = useRef<HTMLDivElement>(null);
   const isOpen = activeThreadId === thread.id;
 

@@ -1,10 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { useRemarq } from "../context";
+import { useApostil } from "../context";
 
 export function UserPrompt() {
-  const { user, setUser, commentMode } = useRemarq();
+  const { user, setUser, commentMode } = useApostil();
   const [name, setName] = useState("");
 
   // Only show when comment mode is activated and no user is set

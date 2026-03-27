@@ -3,5 +3,5 @@ dist/
 .comments/
 *.tsbuildinfo
 
-# Remarq comments
-.remarq/
+# Apostil comments
+.apostil/

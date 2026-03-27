@@ -1,9 +1,9 @@
 "use client";
 
-import { useRemarq } from "../context";
+import { useApostil } from "../context";
 
 export function useComments() {
-  const { threads, addThread, addReply, resolveThread, deleteThread, unresolvedCount } = useRemarq();
+  const { threads, addThread, addReply, resolveThread, deleteThread, unresolvedCount } = useApostil();
 
   return {
     threads,

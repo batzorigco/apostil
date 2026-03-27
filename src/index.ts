@@ -1,8 +1,8 @@
-// Remarq — Pin-and-comment feedback overlay
-// https://github.com/batzorigco/remarq
+// Apostil — Pin-and-comment feedback overlay
+// https://github.com/batzorigco/apostil
 
 // Provider & hooks
-export { RemarqProvider, useRemarq } from "./context";
+export { ApostilProvider, useApostil } from "./context";
 export { useComments } from "./hooks/use-comments";
 export { useCommentMode } from "./hooks/use-comment-mode";
 
@@ -16,8 +16,8 @@ export { debug } from "./debug";
 
 // Types
 export type {
-  RemarqUser,
-  RemarqComment,
-  RemarqThread,
-  RemarqStorage,
+  ApostilUser,
+  ApostilComment,
+  ApostilThread,
+  ApostilStorage,
 } from "./types";

@@ -1,19 +1,19 @@
 /**
- * Next.js API route handler for remarq comment storage.
- * Stores comments as JSON files in the project's .remarq/ directory.
+ * Next.js API route handler for apostil comment storage.
+ * Stores comments as JSON files in the project's .apostil/ directory.
  *
  * Usage:
  *
- * // app/api/remarq/route.ts
- * export { GET, POST } from "remarq/adapters/nextjs";
+ * // app/api/apostil/route.ts
+ * export { GET, POST } from "apostil/adapters/nextjs";
  *
  * Or with custom directory:
- * import { createNextjsHandler } from "remarq/adapters/nextjs";
+ * import { createNextjsHandler } from "apostil/adapters/nextjs";
  * const { GET, POST } = createNextjsHandler(".my-comments");
  * export { GET, POST };
  */
 
-export function createNextjsHandler(directory: string = ".remarq") {
+export function createNextjsHandler(directory: string = ".apostil") {
   return {
     async GET(request: Request) {
       const { promises: fs } = await import("fs");
@@ -87,7 +87,7 @@ export function createNextjsHandler(directory: string = ".remarq") {
   };
 }
 
-// Default handler with ".remarq" directory
+// Default handler with ".apostil" directory
 const defaultHandler = createNextjsHandler();
 export const GET = defaultHandler.GET;
 export const POST = defaultHandler.POST;

@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect } from "react";
-import { useRemarq } from "../context";
+import { useApostil } from "../context";
 import { debug } from "../debug";
 import { CommentPin } from "./comment-pin";
-import { RemarqThreadPopover } from "./comment-thread";
+import { ApostilThreadPopover } from "./comment-thread";
 import { CommentComposer } from "./comment-composer";
 import { UserPrompt } from "./user-prompt";
 
@@ -220,7 +220,7 @@ function findCommentTarget(el: HTMLElement, boundary: HTMLElement | null) {
 
 export function CommentOverlay() {
   const { threads, commentMode, setCommentMode, user, addThread, setActiveThreadId } =
-    useRemarq();
+    useApostil();
   const overlayRef = useRef<HTMLDivElement>(null);
   const [pendingPin, setPendingPin] = useState<PendingPin | null>(null);
   const [pendingPixel, setPendingPixel] = useState<{ left: number; top: number } | null>(null);
@@ -373,7 +373,7 @@ export function CommentOverlay() {
         {sortedThreads.map((thread, i) => (
           <div key={thread.id} className="pointer-events-auto">
             <CommentPin thread={thread} index={i} overlayRef={overlayRef} />
-            <RemarqThreadPopover thread={thread} overlayRef={overlayRef} />
+            <ApostilThreadPopover thread={thread} overlayRef={overlayRef} />
           </div>
         ))}
 

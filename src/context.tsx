@@ -9,17 +9,17 @@ import {
   useRef,
   type ReactNode,
 } from "react";
-import type { RemarqThread, RemarqUser, RemarqStorage } from "./types";
+import type { ApostilThread, ApostilUser, ApostilStorage } from "./types";
 import { createRestAdapter } from "./adapters/rest";
 import { generateId, loadUser, saveUser, getRandomColor } from "./utils";
 import { debug } from "./debug";
 
 // Stable default adapter (created once, not per render)
-const defaultAdapter = createRestAdapter("/api/remarq");
+const defaultAdapter = createRestAdapter("/api/apostil");
 
-type RemarqContextValue = {
-  threads: RemarqThread[];
-  user: RemarqUser | null;
+type ApostilContextValue = {
+  threads: ApostilThread[];
+  user: ApostilUser | null;
   commentMode: boolean;
   activeThreadId: string | null;
   sidebarOpen: boolean;
@@ -34,20 +34,20 @@ type RemarqContextValue = {
   unresolvedCount: number;
 };
 
-const RemarqContext = createContext<RemarqContextValue | null>(null);
+const ApostilContext = createContext<ApostilContextValue | null>(null);
 
-export function RemarqProvider({
+export function ApostilProvider({
   pageId,
   storage,
   children,
 }: {
   pageId: string;
-  storage?: RemarqStorage;
+  storage?: ApostilStorage;
   children: ReactNode;
 }) {
   const adapter = storage ?? defaultAdapter;
-  const [threads, setThreads] = useState<RemarqThread[]>([]);
-  const [user, setUserState] = useState<RemarqUser | null>(null);
+  const [threads, setThreads] = useState<ApostilThread[]>([]);
+  const [user, setUserState] = useState<ApostilUser | null>(null);
   const [commentMode, setCommentMode] = useState(false);
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -85,7 +85,7 @@ export function RemarqProvider({
   }, [threads, pageId, loaded]);
 
   const setUser = useCallback((name: string) => {
-    const u: RemarqUser = { id: generateId(), name, color: getRandomColor() };
+    const u: ApostilUser = { id: generateId(), name, color: getRandomColor() };
     setUserState(u);
     saveUser(u);
   }, []);
@@ -94,7 +94,7 @@ export function RemarqProvider({
     (pinX: number, pinY: number, body: string, targetId?: string, targetLabel?: string) => {
       if (!user) return;
       const threadId = generateId();
-      const thread: RemarqThread = {
+      const thread: ApostilThread = {
         id: threadId,
         pageId,
         pinX, pinY,
@@ -141,19 +141,19 @@ export function RemarqProvider({
   const unresolvedCount = threads.filter((t) => !t.resolved).length;
 
   return (
-    <RemarqContext.Provider value={{
+    <ApostilContext.Provider value={{
       threads, user, commentMode, activeThreadId, sidebarOpen,
       setCommentMode, setActiveThreadId, setSidebarOpen,
       addThread, addReply, resolveThread, deleteThread, setUser,
       unresolvedCount,
     }}>
       {children}
-    </RemarqContext.Provider>
+    </ApostilContext.Provider>
   );
 }
 
-export function useRemarq() {
-  const ctx = useContext(RemarqContext);
-  if (!ctx) throw new Error("useRemarq must be used within RemarqProvider");
+export function useApostil() {
+  const ctx = useContext(ApostilContext);
+  if (!ctx) throw new Error("useApostil must be used within ApostilProvider");
   return ctx;
 }

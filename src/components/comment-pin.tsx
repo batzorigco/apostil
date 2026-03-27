@@ -2,8 +2,8 @@
 
 import { useState, useEffect, useCallback, type RefObject } from "react";
 import { createPortal } from "react-dom";
-import { useRemarq } from "../context";
-import type { RemarqThread } from "../types";
+import { useApostil } from "../context";
+import type { ApostilThread } from "../types";
 
 /**
  * Find the target element using the stored targetId.
@@ -34,7 +34,7 @@ function findTargetElement(targetId: string): HTMLElement | null {
  * Used only for NON-targeted pins (no targetId).
  */
 function resolveOverlayPosition(
-  thread: RemarqThread,
+  thread: ApostilThread,
   overlayEl: HTMLElement | null
 ): { left: number; top: number } | null {
   if (!overlayEl) return null;
@@ -50,7 +50,7 @@ function resolveOverlayPosition(
  * Used by the thread popover which always renders in the overlay.
  */
 function resolvePosition(
-  thread: RemarqThread,
+  thread: ApostilThread,
   overlayEl: HTMLElement | null
 ): { left: number; top: number } | null {
   if (!overlayEl) return null;
@@ -82,7 +82,7 @@ function PinButton({
   isActive,
   onClick,
 }: {
-  thread: RemarqThread;
+  thread: ApostilThread;
   index: number;
   isActive: boolean;
   onClick: (e: React.MouseEvent) => void;
@@ -127,10 +127,10 @@ function TargetedPin({
   thread,
   index,
 }: {
-  thread: RemarqThread;
+  thread: ApostilThread;
   index: number;
 }) {
-  const { activeThreadId, setActiveThreadId } = useRemarq();
+  const { activeThreadId, setActiveThreadId } = useApostil();
   const isActive = activeThreadId === thread.id;
   const [targetEl, setTargetEl] = useState<HTMLElement | null>(null);
 
@@ -190,11 +190,11 @@ function OverlayPin({
   index,
   overlayRef,
 }: {
-  thread: RemarqThread;
+  thread: ApostilThread;
   index: number;
   overlayRef: RefObject<HTMLDivElement | null>;
 }) {
-  const { activeThreadId, setActiveThreadId } = useRemarq();
+  const { activeThreadId, setActiveThreadId } = useApostil();
   const isActive = activeThreadId === thread.id;
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
 
@@ -240,7 +240,7 @@ export function CommentPin({
   index,
   overlayRef,
 }: {
-  thread: RemarqThread;
+  thread: ApostilThread;
   index: number;
   overlayRef: RefObject<HTMLDivElement | null>;
 }) {

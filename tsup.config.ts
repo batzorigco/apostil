@@ -15,16 +15,15 @@ export default defineConfig([
     external: ["react", "react-dom"],
     banner: { js: '"use client";' },
   },
-  // Server-side (Node adapters + CLI)
+  // Server-side (Next.js adapter + CLI)
   {
     entry: {
       "adapters/nextjs": "src/adapters/nextjs.ts",
-      "adapters/global": "src/adapters/global.ts",
       "cli/index": "src/cli/index.ts",
     },
     format: ["esm"],
     dts: true,
     sourcemap: true,
-    external: ["react", "react-dom", "fs", "path", "os", "http"],
+    external: ["react", "react-dom", "fs", "path"],
   },
 ]);
