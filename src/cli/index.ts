@@ -22,38 +22,49 @@ function printHelp() {
   remarq — Pin-and-comment feedback for your app
 
   Usage:
-    remarq init         Set up remarq in this project
-    remarq remove       Remove remarq from this project
-    remarq help         Show this help
+    remarq init [mode]    Set up remarq in this project
+    remarq remove         Remove remarq from this project
+    remarq help           Show this help
 
-  Options:
-    --keep-comments     Commit .remarq/ to git (share with team)
+  Modes:
+    --dev        Default. Comments ignored, route committed.
+                 Team shares the setup, not the comments.
+
+    --personal   Everything ignored. Your private feedback,
+                 nothing touches git.
+
+    --public       Comments committed to git. Shared with the
+                 whole team via version control.
   `);
+}
+
+type Mode = "dev" | "personal" | "public";
+
+function getMode(): Mode {
+  if (args.includes("--personal")) return "personal";
+  if (args.includes("--public")) return "public";
+  return "dev";
 }
 
 // ── remarq init ──────────────────────────────────────────────
 
 async function init() {
   const cwd = process.cwd();
-  const keepComments = args.includes("--keep-comments");
+  const mode = getMode();
 
-  console.log("\n  Setting up remarq...\n");
+  console.log(`\n  Setting up remarq (${mode} mode)...\n`);
 
   // 1. Create .remarq/ directory
   await fs.mkdir(path.join(cwd, ".remarq"), { recursive: true });
   console.log("  ✓ Created .remarq/ directory");
 
-  // 2. Add to .gitignore
-  if (!keepComments) {
-    await addToGitignore(cwd);
-  } else {
-    console.log("  · Comments will be committed to git");
-  }
+  // 2. Update .gitignore based on mode
+  await updateGitignore(cwd, mode);
 
   // 3. Detect framework
   const framework = await detectFramework(cwd);
 
-  // 4. Install package if needed
+  // 4. Check if package is installed
   const hasPackage = await checkDependency(cwd);
   if (!hasPackage) {
     console.log("  → Run: npm install remarq");
@@ -63,7 +74,17 @@ async function init() {
   if (framework === "nextjs") {
     const isNew = await setupNextjs(cwd);
     if (isNew) {
-      console.log(`
+      printSetupInstructions(mode);
+    } else {
+      console.log("\n  remarq is already set up. Run your dev server and press C to comment.\n");
+    }
+  } else {
+    console.log("\n  Done! Add remarq to your app and run your dev server.\n");
+  }
+}
+
+function printSetupInstructions(mode: Mode) {
+  console.log(`
   Done! Add to your root layout:
 
   import { RemarqProvider, CommentOverlay, CommentToggle, CommentSidebar } from "remarq";
@@ -81,20 +102,11 @@ async function init() {
     );
   }
 
-  Then run your dev server — remarq is ready. Press C to comment.
-`);
-    } else {
-      console.log("\n  remarq is already set up. Run your dev server and press C to comment.\n");
-    }
-  } else {
-    console.log(`
-  Done! Add the script tag to your HTML:
+  Mode: ${mode}
+  ${mode === "dev" ? "Comments are local only. Route is committed." : ""}${mode === "personal" ? "Everything is gitignored. Your private feedback." : ""}${mode === "public" ? "Comments are committed to git. Comments shared via git." : ""}
 
-  <script src="https://unpkg.com/remarq/dist/injector.js"></script>
-
-  Or install and import in your app.
+  Run your dev server and press C to comment.
 `);
-  }
 }
 
 // ── remarq remove ────────────────────────────────────────────
@@ -103,7 +115,6 @@ async function remove() {
   const cwd = process.cwd();
   console.log("\n  Removing remarq...\n");
 
-  // Remove API route
   const routePaths = [
     path.join(cwd, "src", "app", "api", "remarq"),
     path.join(cwd, "app", "api", "remarq"),
@@ -114,6 +125,16 @@ async function remove() {
       console.log("  ✓ Removed api/remarq/ route");
     } catch {}
   }
+
+  // Clean gitignore
+  const gitignorePath = path.join(cwd, ".gitignore");
+  try {
+    let content = await fs.readFile(gitignorePath, "utf-8");
+    content = content.replace(/\n# Remarq[^\n]*\n[^\n]*\n?/g, "\n");
+    content = content.replace(/\n# Remarq[^\n]*\n/g, "\n");
+    await fs.writeFile(gitignorePath, content, "utf-8");
+    console.log("  ✓ Cleaned .gitignore");
+  } catch {}
 
   console.log(`
   Done. You can also:
@@ -146,21 +167,39 @@ async function checkDependency(cwd: string): Promise<boolean> {
   }
 }
 
-async function addToGitignore(cwd: string) {
+async function updateGitignore(cwd: string, mode: Mode) {
   const gitignorePath = path.join(cwd, ".gitignore");
-  try {
-    let content = "";
-    try { content = await fs.readFile(gitignorePath, "utf-8"); } catch {}
-    if (!content.includes(".remarq")) {
-      content += "\n# Remarq comments\n.remarq/\n";
-      await fs.writeFile(gitignorePath, content, "utf-8");
-      console.log("  ✓ Added .remarq/ to .gitignore");
-    } else {
-      console.log("  · .remarq/ already in .gitignore");
-    }
-  } catch {
-    console.log("  · Could not update .gitignore");
+  let content = "";
+  try { content = await fs.readFile(gitignorePath, "utf-8"); } catch {}
+
+  // Remove any existing remarq entries
+  content = content.replace(/\n# Remarq[^\n]*\n[^\n]*\n?/g, "\n");
+
+  // Add based on mode
+  switch (mode) {
+    case "dev":
+      // Ignore comments, keep route
+      if (!content.includes(".remarq/")) {
+        content += "\n# Remarq comments (local only)\n.remarq/\n";
+      }
+      console.log("  ✓ .remarq/ added to .gitignore (comments are local)");
+      break;
+
+    case "personal":
+      // Ignore everything
+      if (!content.includes(".remarq/")) {
+        content += "\n# Remarq (personal mode)\n.remarq/\napp/api/remarq/\nsrc/app/api/remarq/\n";
+      }
+      console.log("  ✓ .remarq/ and api route added to .gitignore (fully private)");
+      break;
+
+    case "public":
+      // Don't ignore anything — comments are shared
+      console.log("  · .remarq/ will be committed to git (public mode)");
+      break;
   }
+
+  await fs.writeFile(gitignorePath, content, "utf-8");
 }
 
 async function setupNextjs(cwd: string): Promise<boolean> {
@@ -186,7 +225,7 @@ async function setupNextjs(cwd: string): Promise<boolean> {
 
   try {
     await fs.access(routeFile);
-    return false; // already exists
+    return false;
   } catch {
     await fs.writeFile(routeFile, `export { GET, POST } from "remarq/adapters/nextjs";\n`, "utf-8");
     console.log("  ✓ Created api/remarq/route.ts");
