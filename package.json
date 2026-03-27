@@ -41,8 +41,12 @@
       "import": "./dist/adapters/global.js"
     }
   },
+  "bin": {
+    "remarq": "./bin/remarq.js"
+  },
   "files": [
     "dist",
+    "bin",
     "README.md",
     "LICENSE"
   ],
