@@ -14,6 +14,9 @@ import { createRestAdapter } from "./adapters/rest";
 import { generateId, loadUser, saveUser, getRandomColor } from "./utils";
 import { debug } from "./debug";
 
+// Stable default adapter (created once, not per render)
+const defaultAdapter = createRestAdapter("/api/remarq");
+
 type RemarqContextValue = {
   threads: RemarqThread[];
   user: RemarqUser | null;
@@ -42,8 +45,7 @@ export function RemarqProvider({
   storage?: RemarqStorage;
   children: ReactNode;
 }) {
-  // Default: use the app's own /api/remarq route
-  const adapter = storage ?? createRestAdapter("/api/remarq");
+  const adapter = storage ?? defaultAdapter;
   const [threads, setThreads] = useState<RemarqThread[]>([]);
   const [user, setUserState] = useState<RemarqUser | null>(null);
   const [commentMode, setCommentMode] = useState(false);
@@ -71,15 +73,16 @@ export function RemarqProvider({
         setLoaded(true);
       }
     });
-  }, [pageId, adapter]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pageId]);
 
   useEffect(() => {
-    // Only save if loaded AND pageId matches (avoid saving during transitions)
-    if (loaded && pageIdRef.current === pageId) {
+    if (loaded && pageIdRef.current === pageId && threads.length > 0) {
       debug.log("saving", threads.length, "threads for pageId:", pageId);
       adapter.save(pageId, threads);
     }
-  }, [threads, pageId, adapter, loaded]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [threads, pageId, loaded]);
 
   const setUser = useCallback((name: string) => {
     const u: RemarqUser = { id: generateId(), name, color: getRandomColor() };
