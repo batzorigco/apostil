@@ -61,8 +61,9 @@ async function init() {
 
   // 5. Framework-specific setup
   if (framework === "nextjs") {
-    await setupNextjs(cwd);
-    console.log(`
+    const isNew = await setupNextjs(cwd);
+    if (isNew) {
+      console.log(`
   Done! Add to your root layout:
 
   import { RemarqProvider, CommentOverlay, CommentToggle, CommentSidebar } from "remarq";
@@ -82,6 +83,9 @@ async function init() {
 
   Then run your dev server — remarq is ready. Press C to comment.
 `);
+    } else {
+      console.log("\n  remarq is already set up. Run your dev server and press C to comment.\n");
+    }
   } else {
     console.log(`
   Done! Add the script tag to your HTML:
@@ -159,7 +163,7 @@ async function addToGitignore(cwd: string) {
   }
 }
 
-async function setupNextjs(cwd: string) {
+async function setupNextjs(cwd: string): Promise<boolean> {
   const appDir = path.join(cwd, "src", "app");
   const appDirAlt = path.join(cwd, "app");
   let routeDir: string;
@@ -173,7 +177,7 @@ async function setupNextjs(cwd: string) {
       routeDir = path.join(appDirAlt, "api", "remarq");
     } catch {
       console.log("  · Could not find app/ directory");
-      return;
+      return false;
     }
   }
 
@@ -182,9 +186,10 @@ async function setupNextjs(cwd: string) {
 
   try {
     await fs.access(routeFile);
-    console.log("  · API route already exists");
+    return false; // already exists
   } catch {
     await fs.writeFile(routeFile, `export { GET, POST } from "remarq/adapters/nextjs";\n`, "utf-8");
     console.log("  ✓ Created api/remarq/route.ts");
+    return true;
   }
 }
