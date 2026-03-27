@@ -11,6 +11,9 @@ export { CommentOverlay } from "./components/comment-overlay";
 export { CommentToggle } from "./components/comment-toggle";
 export { CommentSidebar } from "./components/comment-sidebar";
 
+// Debug
+export { debug } from "./debug";
+
 // Types
 export type {
   RemarqUser,

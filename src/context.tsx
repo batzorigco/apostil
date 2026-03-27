@@ -11,6 +11,7 @@ import {
 import type { RemarqThread, RemarqUser, RemarqStorage } from "./types";
 import { createRestAdapter } from "./adapters/rest";
 import { generateId, loadUser, saveUser, getRandomColor } from "./utils";
+import { debug } from "./debug";
 
 type RemarqContextValue = {
   threads: RemarqThread[];
@@ -55,14 +56,19 @@ export function RemarqProvider({
   }, []);
 
   useEffect(() => {
+    debug.log("loading threads for pageId:", pageId);
     adapter.load(pageId).then((t) => {
+      debug.log("loaded", t.length, "threads");
       setThreads(t);
       setLoaded(true);
     });
   }, [pageId, adapter]);
 
   useEffect(() => {
-    if (loaded) adapter.save(pageId, threads);
+    if (loaded) {
+      debug.log("saving", threads.length, "threads for pageId:", pageId);
+      adapter.save(pageId, threads);
+    }
   }, [threads, pageId, adapter, loaded]);
 
   const setUser = useCallback((name: string) => {
@@ -87,6 +93,7 @@ export function RemarqProvider({
           createdAt: new Date().toISOString(),
         }],
       };
+      debug.log("new thread:", { threadId, pinX, pinY, targetId, targetLabel, body });
       setThreads((prev) => [...prev, thread]);
       setActiveThreadId(threadId);
       setCommentMode(false);

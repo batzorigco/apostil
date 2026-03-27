@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useRemarq } from "../context";
+import { debug } from "../debug";
 import { CommentPin } from "./comment-pin";
 import { RemarqThreadPopover } from "./comment-thread";
 import { CommentComposer } from "./comment-composer";
@@ -184,7 +185,7 @@ function findCommentTarget(el: HTMLElement, boundary: HTMLElement | null) {
   const targetId = getElementId(best.el);
   const targetLabel = getElementLabel(best.el);
 
-  console.log("[comments] candidates:", candidates.map((c) => ({
+  debug.log(" candidates:", candidates.map((c) => ({
     tag: c.el.tagName.toLowerCase(),
     id: c.el.id || undefined,
     class: c.el.className?.toString().slice(0, 60) || undefined,
@@ -219,8 +220,8 @@ export function CommentOverlay() {
       const elementBelow = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null;
       overlay.style.pointerEvents = "";
 
-      console.log("[comments] click at", { clientX: e.clientX, clientY: e.clientY });
-      console.log("[comments] element below overlay:", elementBelow);
+      debug.log(" click at", { clientX: e.clientX, clientY: e.clientY });
+      debug.log(" element below overlay:", elementBelow);
 
       // Log the DOM path for debugging
       if (elementBelow) {
@@ -236,7 +237,7 @@ export function CommentOverlay() {
           path.push(attrs.join(""));
           walk = walk.parentElement;
         }
-        console.log("[comments] DOM path:", path.join(" → "));
+        debug.log(" DOM path:", path.join(" → "));
       }
 
       const target = elementBelow ? findCommentTarget(elementBelow, overlayRef.current) : null;
@@ -245,7 +246,7 @@ export function CommentOverlay() {
         const targetRect = target.element.getBoundingClientRect();
         const x = ((e.clientX - targetRect.left) / targetRect.width) * 100;
         const y = ((e.clientY - targetRect.top) / targetRect.height) * 100;
-        console.log("[comments] ✅ target found:", {
+        debug.log(" ✅ target found:", {
           targetId: target.targetId,
           targetLabel: target.targetLabel,
           element: target.element,
@@ -256,7 +257,7 @@ export function CommentOverlay() {
       } else {
         const x = ((e.clientX - overlayRect.left) / overlayRect.width) * 100;
         const y = ((e.clientY - overlayRect.top) / overlayRect.height) * 100;
-        console.log("[comments] ⚠️ no target found, using overlay-relative position:", {
+        debug.log(" ⚠️ no target found, using overlay-relative position:", {
           x: x.toFixed(1),
           y: y.toFixed(1),
         });
@@ -275,7 +276,7 @@ export function CommentOverlay() {
   const handleNewComment = useCallback(
     (body: string) => {
       if (!pendingPin) return;
-      console.log("[comments] saving thread:", {
+      debug.log(" saving thread:", {
         pinX: pendingPin.x.toFixed(1),
         pinY: pendingPin.y.toFixed(1),
         targetId: pendingPin.targetId ?? "(none)",
@@ -310,11 +311,11 @@ export function CommentOverlay() {
         }
       } else if (e.key === "c" || e.key === "C") {
         if (!commentMode) {
-          console.log("[comments] comment mode ON");
+          debug.log(" comment mode ON");
           setActiveThreadId(null);
           setCommentMode(true);
         } else {
-          console.log("[comments] comment mode OFF");
+          debug.log(" comment mode OFF");
           setCommentMode(false);
         }
       }
