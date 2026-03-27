@@ -263,7 +263,7 @@ function AllPagesView({
                   key={thread.id}
                   onClick={() => {
                     // Navigate to the page with the comment hash
-                    const path = "/" + page.pageId.replace(/--/g, "/");
+                    const path = page.pageId === "home" ? "/" : "/" + page.pageId.replace(/--/g, "/");
                     window.location.href = path + "#apostil-" + thread.id;
                   }}
                   className={`px-4 py-2.5 border-b border-neutral-50 cursor-pointer hover:bg-neutral-50 transition-colors ${

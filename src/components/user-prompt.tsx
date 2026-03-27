@@ -17,7 +17,12 @@ export function UserPrompt() {
   };
 
   return (
-    <div className="absolute inset-0 z-[80] flex items-center justify-center bg-black/20 backdrop-blur-[2px]">
+    <div
+      className="fixed inset-0 flex items-center justify-center bg-black/20 backdrop-blur-[2px]"
+      style={{ zIndex: 99999 }}
+      onMouseDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
+    >
       <div className="bg-white rounded-xl shadow-2xl border border-neutral-200 p-6 w-80">
         <h3 className="text-sm font-semibold text-neutral-900 mb-1">
           What&apos;s your name?

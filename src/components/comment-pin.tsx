@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, type RefObject } from "react";
+import { useState, useEffect, useCallback, useRef, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { useApostil } from "../context";
 import type { ApostilThread } from "../types";
@@ -88,36 +88,66 @@ function PinButton({
   onClick: (e: React.MouseEvent) => void;
 }) {
   const authorColor = thread.comments[0]?.author.color ?? "#df461c";
+  const [hovered, setHovered] = useState(false);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const [tooltipPos, setTooltipPos] = useState<{ left: number; top: number } | null>(null);
+
+  useEffect(() => {
+    if (!hovered || !buttonRef.current) {
+      setTooltipPos(null);
+      return;
+    }
+    const rect = buttonRef.current.getBoundingClientRect();
+    setTooltipPos({
+      left: rect.left + rect.width / 2,
+      top: rect.bottom + 4,
+    });
+  }, [hovered]);
 
   return (
-    <button onClick={onClick} className="group" style={{ position: "relative" }}>
-      <div
-        className={`
-          flex items-center justify-center
-          w-7 h-7 rounded-full text-white text-xs font-semibold
-          shadow-lg cursor-pointer
-          transition-all duration-200
-          ${isActive ? "scale-125 ring-2 ring-white ring-offset-2" : "hover:scale-110"}
-          ${thread.resolved ? "opacity-40" : ""}
-        `}
-        style={{ backgroundColor: authorColor }}
+    <>
+      <button
+        ref={buttonRef}
+        onClick={onClick}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        style={{ position: "relative" }}
       >
-        {index + 1}
-      </div>
-      {!thread.resolved && !isActive && (
         <div
-          className="absolute inset-0 rounded-full animate-ping opacity-20"
+          className={`
+            flex items-center justify-center
+            w-7 h-7 rounded-full text-white text-xs font-semibold
+            shadow-lg cursor-pointer
+            transition-all duration-200
+            ${isActive ? "scale-125 ring-2 ring-white ring-offset-2" : "hover:scale-110"}
+            ${thread.resolved ? "opacity-40" : ""}
+          `}
           style={{ backgroundColor: authorColor }}
-        />
-      )}
-      {thread.targetLabel && (
-        <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap
-                        opacity-0 group-hover:opacity-100 transition-opacity
-                        text-[10px] bg-neutral-800 text-white px-1.5 py-0.5 rounded pointer-events-none">
-          {thread.targetLabel}
+        >
+          {index + 1}
         </div>
+        {!thread.resolved && !isActive && (
+          <div
+            className="absolute inset-0 rounded-full animate-ping opacity-20"
+            style={{ backgroundColor: authorColor }}
+          />
+        )}
+      </button>
+      {thread.targetLabel && hovered && tooltipPos && createPortal(
+        <div
+          className="fixed whitespace-nowrap text-[10px] bg-neutral-800 text-white px-1.5 py-0.5 rounded pointer-events-none"
+          style={{
+            left: tooltipPos.left,
+            top: tooltipPos.top,
+            transform: "translateX(-50%)",
+            zIndex: 999999,
+          }}
+        >
+          {thread.targetLabel}
+        </div>,
+        document.body
       )}
-    </button>
+    </>
   );
 }
 

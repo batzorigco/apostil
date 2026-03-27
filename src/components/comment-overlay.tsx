@@ -313,6 +313,27 @@ export function CommentOverlay() {
     setCommentMode(false);
   }, [setCommentMode]);
 
+  // Open thread from URL hash (e.g. #apostil-threadId)
+  useEffect(() => {
+    const hash = window.location.hash;
+    console.log("[apostil] hash check:", hash, "threads:", threads.length, threads.map(t => t.id));
+    if (!hash.startsWith("#apostil-")) return;
+    const threadId = hash.replace("#apostil-", "");
+    console.log("[apostil] looking for thread:", threadId);
+    // Wait for threads to load before activating
+    if (threads.length === 0) {
+      console.log("[apostil] no threads loaded yet, waiting...");
+      return;
+    }
+    const found = threads.find((t) => t.id === threadId);
+    console.log("[apostil] found thread:", found ? "yes" : "no");
+    if (found) {
+      setActiveThreadId(threadId);
+      // Clean hash from URL without triggering navigation
+      window.history.replaceState(null, "", window.location.pathname);
+    }
+  }, [threads, setActiveThreadId]);
+
   // Keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -330,10 +351,12 @@ export function CommentOverlay() {
         return;
       }
 
-      // Other shortcuts only when not typing
+      // Other shortcuts only when not typing, and not with modifier keys (Cmd+C, Ctrl+C, etc.)
       if (tag === "INPUT" || tag === "TEXTAREA") return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
 
       if (e.key === "c" || e.key === "C") {
+        e.preventDefault(); // prevent "c" from leaking into any input that gains focus
         if (!commentMode) {
           debug.log(" comment mode ON");
           setActiveThreadId(null);
@@ -354,15 +377,16 @@ export function CommentOverlay() {
     return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
   });
 
+  // When user prompt is showing, disable the overlay click handling
+  const showingUserPrompt = commentMode && !user;
+
   return (
     <>
-      <UserPrompt />
-
       {/* Overlay layer */}
       <div
         ref={overlayRef}
         className={`fixed inset-0 ${
-          commentMode
+          commentMode && !showingUserPrompt
             ? "cursor-crosshair pointer-events-auto"
             : "pointer-events-none"
         }`}
@@ -424,13 +448,16 @@ export function CommentOverlay() {
       </div>
 
       {/* Comment mode hint */}
-      {commentMode && !pendingPin && (
+      {commentMode && !pendingPin && !showingUserPrompt && (
         <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[60] pointer-events-none">
           <div className="bg-neutral-900/80 text-white text-sm px-4 py-2 rounded-full backdrop-blur-sm">
             Click anywhere to add a comment
           </div>
         </div>
       )}
+
+      {/* User prompt — rendered above overlay so clicks work */}
+      <UserPrompt />
     </>
   );
 }
