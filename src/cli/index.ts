@@ -5,6 +5,7 @@ import fs from "fs/promises";
 import path from "path";
 import os from "os";
 import { getInjectorScript } from "./injector";
+import { getDashboardHTML } from "./dashboard";
 
 const DEFAULT_PORT = 4567;
 const REMARQ_DIR = path.join(os.homedir(), ".remarq");
@@ -135,6 +136,47 @@ async function startServer() {
       return;
     }
 
+    // Dashboard
+    if (url.pathname === "/" || url.pathname === "/dashboard") {
+      res.setHeader("Content-Type", "text/html");
+      res.writeHead(200);
+      res.end(getDashboardHTML(port, project));
+      return;
+    }
+
+    // API: list all comments across all pages
+    if (req.method === "GET" && url.pathname === "/api/all-comments") {
+      try {
+        const files = await fs.readdir(projectDir);
+        const pages: { pageId: string; threads: unknown[] }[] = [];
+        for (const file of files) {
+          if (!file.endsWith(".json")) continue;
+          const pageId = file.replace(".json", "");
+          try {
+            const data = await fs.readFile(path.join(projectDir, file), "utf-8");
+            const threads = JSON.parse(data);
+            if (Array.isArray(threads) && threads.length > 0) {
+              pages.push({ pageId, threads });
+            }
+          } catch {}
+        }
+        // Sort by most recent comment
+        pages.sort((a, b) => {
+          const aLatest = Math.max(...(a.threads as Array<{createdAt:string}>).map(t => new Date(t.createdAt).getTime()));
+          const bLatest = Math.max(...(b.threads as Array<{createdAt:string}>).map(t => new Date(t.createdAt).getTime()));
+          return bLatest - aLatest;
+        });
+        res.setHeader("Content-Type", "application/json");
+        res.writeHead(200);
+        res.end(JSON.stringify(pages));
+      } catch {
+        res.setHeader("Content-Type", "application/json");
+        res.writeHead(200);
+        res.end("[]");
+      }
+      return;
+    }
+
     // Status endpoint
     if (url.pathname === "/status") {
       res.setHeader("Content-Type", "application/json");
@@ -156,6 +198,9 @@ async function startServer() {
   ║  Server:  http://localhost:${String(port).padEnd(15)}║
   ║  Project: ${project.padEnd(30)}║
   ║  Storage: ~/.remarq/${project.padEnd(20)}║
+  ║                                          ║
+  ║  Dashboard:                                ║
+  ║  http://localhost:${String(port).padEnd(26)}║
   ║                                          ║
   ║  Add to your app:                        ║
   ║  <script src="http://localhost:${port}/   ║

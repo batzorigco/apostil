@@ -230,8 +230,32 @@ export function getInjectorScript(port: number): string {
     }
   });
 
+  // Check for #remarq-{threadId} hash to auto-open a thread
+  function checkHash() {
+    const hash = location.hash;
+    if (hash.startsWith("#remarq-")) {
+      const threadId = hash.slice(8);
+      setTimeout(() => {
+        const thread = threads.find(t => t.id === threadId);
+        if (thread) {
+          const pin = container.querySelector('.remarq-pin');
+          // Find the correct pin
+          const pins = container.querySelectorAll('.remarq-pin');
+          const openThreads = threads.filter(t => !t.resolved);
+          const idx = openThreads.findIndex(t => t.id === threadId);
+          if (idx >= 0 && pins[idx]) {
+            showThread(thread, pins[idx]);
+            // Scroll pin into view if needed
+            pins[idx].scrollIntoView({ behavior: "smooth", block: "center" });
+          }
+        }
+      }, 500);
+    }
+  }
+
   // Load on start
-  loadThreads();
+  loadThreads().then(checkHash);
+  window.addEventListener("hashchange", checkHash);
 
   console.log("[remarq] loaded — press C to comment");
 })();
