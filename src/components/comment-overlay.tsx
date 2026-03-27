@@ -317,16 +317,23 @@ export function CommentOverlay() {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA") return;
 
+      // Escape always works — even when typing
       if (e.key === "Escape") {
         if (pendingPin) {
           setPendingPin(null);
           setPendingPixel(null);
+          setCommentMode(false);
         } else if (commentMode) {
           setCommentMode(false);
         }
-      } else if (e.key === "c" || e.key === "C") {
+        return;
+      }
+
+      // Other shortcuts only when not typing
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+
+      if (e.key === "c" || e.key === "C") {
         if (!commentMode) {
           debug.log(" comment mode ON");
           setActiveThreadId(null);
@@ -360,7 +367,7 @@ export function CommentOverlay() {
             : "pointer-events-none"
         }`}
         style={{ zIndex: commentMode ? getHighestZIndex() + 10 : 55 }}
-        onClick={handleClick}
+        onMouseDown={handleClick}
       >
         {/* Existing pins */}
         {sortedThreads.map((thread, i) => (
@@ -378,6 +385,7 @@ export function CommentOverlay() {
               left: pendingPixel.left,
               top: pendingPixel.top,
             }}
+            onMouseDown={(e) => e.stopPropagation()}
             onClick={(e) => e.stopPropagation()}
           >
             <div
