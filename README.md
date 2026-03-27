@@ -24,7 +24,7 @@ npm install -g remarq
 ### 2. Initialize in your project
 
 ```bash
-cd my-nextjs-app
+cd [my-project]
 remarq init
 ```
 
