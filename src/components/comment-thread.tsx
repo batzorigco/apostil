@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback, type RefObject } from "react";
-import { Check, Trash2, Undo2 } from "lucide-react";
+import { Check, Trash2, Undo2 } from "../icons";
 import { useApostil } from "../context";
 import { CommentComposer } from "./comment-composer";
 import { resolvePosition } from "./comment-pin";

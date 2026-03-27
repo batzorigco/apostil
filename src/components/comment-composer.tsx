@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Send } from "lucide-react";
+import { Send } from "../icons";
 
 export function CommentComposer({
   onSubmit,

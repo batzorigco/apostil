@@ -162,7 +162,6 @@ __apostil_debug.disable()
 - React 18+
 - Next.js (App Router)
 - Tailwind CSS
-- lucide-react
 
 ## License
 

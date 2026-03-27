@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { X, Check, Undo2, MessageSquare, Globe, FileText } from "lucide-react";
+import { X, Check, Undo2, MessageSquare, Globe, FileText } from "../icons";
 import { useApostil } from "../context";
 import type { ApostilThread } from "../types";
 

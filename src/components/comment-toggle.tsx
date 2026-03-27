@@ -1,6 +1,6 @@
 "use client";
 
-import { MessageSquare, List, X } from "lucide-react";
+import { MessageSquare, List, X } from "../icons";
 import { useApostil } from "../context";
 
 export function CommentToggle() {
