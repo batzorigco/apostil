@@ -182,20 +182,13 @@ async function startServer() {
 
   server.listen(port, () => {
     console.log(`
-  ╔══════════════════════════════════════════╗
-  ║           remarq is running             ║
-  ╠══════════════════════════════════════════╣
-  ║                                          ║
-  ║  Server:  http://localhost:${String(port).padEnd(15)}║
-  ║  Project: ${project.padEnd(30)}║
-  ║  Storage: ~/.remarq/${project.padEnd(20)}║
-  ║                                          ║
-  ║  Add to your app:                        ║
-  ║  <script src="http://localhost:${port}/   ║
-  ║    remarq.js"></script>                  ║
-  ║                                          ║
-  ║  Press Ctrl+C to stop                    ║
-  ╚══════════════════════════════════════════╝
+  remarq is running
+
+  Server:  http://localhost:${port}
+  Project: ${project}
+  Storage: ~/.remarq/${project}/
+
+  Press Ctrl+C to stop
     `);
 
     // Save PID for stop command
