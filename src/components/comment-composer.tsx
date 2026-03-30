@@ -19,10 +19,11 @@ export function CommentComposer({
 
   useEffect(() => {
     if (autoFocus) {
-      // Delay focus so it lands after the overlay click event completes
-      requestAnimationFrame(() => {
+      // Delay focus past the full click cycle (mousedown → mouseup → click)
+      const timer = setTimeout(() => {
         inputRef.current?.focus();
-      });
+      }, 50);
+      return () => clearTimeout(timer);
     }
   }, [autoFocus]);
 
@@ -47,14 +48,14 @@ export function CommentComposer({
         }}
         placeholder={placeholder}
         rows={1}
-        className="flex-1 resize-none rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm
+        className="flex-1 resize-none rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-sm
                    placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-300
                    min-h-[36px] max-h-[120px]"
       />
       <button
         onClick={handleSubmit}
         disabled={!value.trim()}
-        className="flex items-center justify-center w-8 h-8 rounded-lg
+        className="flex items-center justify-center w-9 h-9 rounded-lg
                    text-white disabled:opacity-30
                    transition-colors shrink-0"
         style={{ backgroundColor: brandColor }}

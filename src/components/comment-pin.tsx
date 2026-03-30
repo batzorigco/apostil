@@ -235,7 +235,11 @@ function OverlayPin({
   useEffect(() => {
     updatePos();
     window.addEventListener("resize", updatePos);
-    return () => window.removeEventListener("resize", updatePos);
+    document.addEventListener("scroll", updatePos, true);
+    return () => {
+      window.removeEventListener("resize", updatePos);
+      document.removeEventListener("scroll", updatePos, true);
+    };
   }, [updatePos]);
 
   if (!pos) return null;
@@ -274,6 +278,7 @@ export function CommentPin({
   index: number;
   overlayRef: RefObject<HTMLDivElement | null>;
 }) {
+  if (thread.resolved) return null;
   if (thread.targetId) {
     return <TargetedPin key={`targeted-${thread.id}`} thread={thread} index={index} />;
   }

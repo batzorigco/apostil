@@ -219,7 +219,7 @@ function findCommentTarget(el: HTMLElement, boundary: HTMLElement | null) {
 }
 
 export function CommentOverlay() {
-  const { threads, commentMode, setCommentMode, user, addThread, setActiveThreadId, brandColor } =
+  const { threads, commentMode, setCommentMode, user, addThread, activeThreadId, setActiveThreadId, brandColor } =
     useApostil();
   const overlayRef = useRef<HTMLDivElement>(null);
   const [pendingPin, setPendingPin] = useState<PendingPin | null>(null);
@@ -233,11 +233,17 @@ export function CommentOverlay() {
 
       const overlayRect = overlayRef.current.getBoundingClientRect();
 
-      // Temporarily hide overlay so elementFromPoint hits the actual content
+      // Find element below overlay using elementsFromPoint — skip all apostil elements
       const overlay = overlayRef.current;
-      overlay.style.pointerEvents = "none";
-      const elementBelow = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null;
-      overlay.style.pointerEvents = "";
+      const elements = document.elementsFromPoint(e.clientX, e.clientY);
+      let elementBelow: HTMLElement | null = null;
+      for (const el of elements) {
+        if (el === overlay || overlay.contains(el)) continue;
+        if (el instanceof HTMLElement) {
+          elementBelow = el;
+          break;
+        }
+      }
 
       debug.log(" click at", { clientX: e.clientX, clientY: e.clientY });
       debug.log(" element below overlay:", elementBelow);
@@ -315,18 +321,18 @@ export function CommentOverlay() {
     setCommentMode(false);
   }, [setCommentMode]);
 
-  // Check if pending popover overflows viewport
+  // Calculate flip based on click position relative to viewport
   useEffect(() => {
-    if (!pendingPin || !pendingRef.current) return;
-    requestAnimationFrame(() => {
-      if (!pendingRef.current) return;
-      const rect = pendingRef.current.getBoundingClientRect();
-      setPendingFlip({
-        x: rect.right > window.innerWidth,
-        y: rect.bottom > window.innerHeight,
-      });
+    if (!pendingPixel || !overlayRef.current) return;
+    const overlayRect = overlayRef.current.getBoundingClientRect();
+    const clickX = overlayRect.left + pendingPixel.left;
+    const clickY = overlayRect.top + pendingPixel.top;
+    // Popover is w-72 (288px) + 20px margin, ~200px tall
+    setPendingFlip({
+      x: clickX + 308 > window.innerWidth,
+      y: clickY + 200 > window.innerHeight,
     });
-  }, [pendingPin]);
+  }, [pendingPixel, overlayRef]);
 
   // Open thread from URL hash (e.g. #apostil-threadId)
   useEffect(() => {
@@ -360,6 +366,8 @@ export function CommentOverlay() {
           setPendingPin(null);
           setPendingPixel(null);
           setCommentMode(false);
+        } else if (activeThreadId) {
+          setActiveThreadId(null);
         } else if (commentMode) {
           setCommentMode(false);
         }
@@ -384,13 +392,12 @@ export function CommentOverlay() {
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [commentMode, pendingPin, setCommentMode, setActiveThreadId]);
+  }, [commentMode, pendingPin, activeThreadId, setCommentMode, setActiveThreadId]);
 
-  // Sort: unresolved first, then resolved
-  const sortedThreads = [...threads].sort((a, b) => {
-    if (a.resolved !== b.resolved) return a.resolved ? 1 : -1;
-    return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
-  });
+  // Only show unresolved threads as pins — resolved ones live in the sidebar
+  const visibleThreads = threads
+    .filter((t) => !t.resolved)
+    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
 
   // When user prompt is showing, disable the overlay click handling
   const showingUserPrompt = commentMode && !user;
@@ -409,7 +416,7 @@ export function CommentOverlay() {
         onMouseDown={handleClick}
       >
         {/* Existing pins */}
-        {sortedThreads.map((thread, i) => (
+        {visibleThreads.map((thread, i) => (
           <div key={thread.id} className="pointer-events-auto">
             <CommentPin thread={thread} index={i} overlayRef={overlayRef} />
             <ApostilThreadPopover thread={thread} overlayRef={overlayRef} />

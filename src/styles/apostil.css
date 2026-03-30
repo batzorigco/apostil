@@ -1,2 +1,4 @@
-@import "tailwindcss/utilities" source("../components");
-@import "tailwindcss/theme";
+@layer apostil {
+  @import "tailwindcss/utilities" source("../components");
+  @import "tailwindcss/theme";
+}
