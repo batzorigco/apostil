@@ -47,7 +47,8 @@
       "types": "./dist/adapters/nextjs.d.ts",
       "import": "./dist/adapters/nextjs.js",
       "require": "./dist/adapters/nextjs.cjs"
-    }
+    },
+    "./styles.css": "./dist/styles.css"
   },
   "bin": {
     "apostil": "./bin/apostil.js"
@@ -59,7 +60,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsup",
+    "build": "tsup && npx @tailwindcss/cli -i src/styles/apostil.css -o dist/styles.css --minify",
     "dev": "tsup --watch",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -71,6 +72,7 @@
     "react-dom": ">=18"
   },
   "devDependencies": {
+    "@tailwindcss/cli": "^4.2.2",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@types/node": "^25.5.0",
@@ -79,6 +81,7 @@
     "jsdom": "^29.0.1",
     "react": "^19",
     "react-dom": "^19",
+    "tailwindcss": "^4.2.2",
     "tsup": "^8",
     "typescript": "^5",
     "vitest": "^4.1.2"

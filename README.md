@@ -7,6 +7,7 @@ Figma-like commenting tool for React & Next.js. Leave comments directly on the W
 - **Smart target detection** — auto-anchors to nearest meaningful element
 - **Project level view** — see every comment across your project in one sidebar, like Figma.
 - **SSR-safe** — works with Next.js App Router
+- **Ships its own CSS** — no Tailwind config needed in your project
 
 ## Quick Start Guide
 
@@ -92,9 +93,11 @@ npm uninstall apostil
 
 ### `<ApostilProvider>`
 
-Core context provider. Use directly for custom setups:
+Core context provider. Use directly for custom setups. When not using `npx apostil init`, import the styles manually:
 
 ```tsx
+import "apostil/styles.css";
+
 <ApostilProvider pageId="my-page" storage={customAdapter}>
   {children}
   <CommentOverlay />

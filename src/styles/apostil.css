@@ -1,0 +1,2 @@
+@import "tailwindcss/utilities" source("../components");
+@import "tailwindcss/theme";

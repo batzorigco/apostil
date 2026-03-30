@@ -209,6 +209,7 @@ import {
   CommentToggle,
   CommentSidebar,
 } from "apostil";
+import "apostil/styles.css";
 
 export function ApostilWrapper({ children }: { children: React.ReactNode }) {${envGuard}
   const pathname = usePathname();
