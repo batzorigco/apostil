@@ -1,7 +1,7 @@
 {
   "name": "apostil",
   "version": "0.1.3",
-  "description": "Pin-and-comment feedback overlay for design prototypes and web apps",
+  "description": "Lightweight, Figma-like commenting for React & Next.js — pin comments directly on your UI",
   "license": "MIT",
   "author": "Batzorigco",
   "repository": {
@@ -10,13 +10,18 @@
   },
   "keywords": [
     "comments",
+    "commenting",
+    "inline-comments",
+    "figma-like",
     "feedback",
     "annotation",
-    "prototype",
-    "design",
+    "react",
+    "nextjs",
     "overlay",
     "review",
-    "collaboration"
+    "collaboration",
+    "pin-comments",
+    "lightweight"
   ],
   "type": "module",
   "main": "./dist/index.cjs",
