@@ -11,6 +11,7 @@ export function CommentToggle() {
     setSidebarOpen,
     unresolvedCount,
     setActiveThreadId,
+    brandColor,
   } = useApostil();
 
   return (
@@ -21,9 +22,10 @@ export function CommentToggle() {
         className={`flex items-center justify-center w-10 h-10 rounded-full shadow-lg
                     transition-all duration-200 hover:scale-105
                     ${sidebarOpen
-                      ? "bg-neutral-900 text-white"
+                      ? "text-white"
                       : "bg-white text-neutral-600 hover:bg-neutral-50 border border-neutral-200"
                     }`}
+        style={sidebarOpen ? { backgroundColor: brandColor } : undefined}
         title="Toggle comment list"
       >
         <List className="w-4 h-4" />
@@ -42,9 +44,10 @@ export function CommentToggle() {
         className={`relative flex items-center justify-center w-12 h-12 rounded-full shadow-lg
                     transition-all duration-200 hover:scale-105
                     ${commentMode
-                      ? "bg-neutral-900 text-white ring-2 ring-neutral-400"
+                      ? "text-white ring-2 ring-neutral-400"
                       : "bg-white text-neutral-700 hover:bg-neutral-50 border border-neutral-200"
                     }`}
+        style={commentMode ? { backgroundColor: brandColor } : undefined}
         title={commentMode ? "Exit comment mode" : "Add comment"}
       >
         {commentMode ? (

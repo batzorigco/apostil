@@ -219,11 +219,13 @@ function findCommentTarget(el: HTMLElement, boundary: HTMLElement | null) {
 }
 
 export function CommentOverlay() {
-  const { threads, commentMode, setCommentMode, user, addThread, setActiveThreadId } =
+  const { threads, commentMode, setCommentMode, user, addThread, setActiveThreadId, brandColor } =
     useApostil();
   const overlayRef = useRef<HTMLDivElement>(null);
   const [pendingPin, setPendingPin] = useState<PendingPin | null>(null);
   const [pendingPixel, setPendingPixel] = useState<{ left: number; top: number } | null>(null);
+  const pendingRef = useRef<HTMLDivElement>(null);
+  const [pendingFlip, setPendingFlip] = useState<{ x: boolean; y: boolean }>({ x: false, y: false });
 
   const handleClick = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
@@ -312,6 +314,19 @@ export function CommentOverlay() {
     setPendingPixel(null);
     setCommentMode(false);
   }, [setCommentMode]);
+
+  // Check if pending popover overflows viewport
+  useEffect(() => {
+    if (!pendingPin || !pendingRef.current) return;
+    requestAnimationFrame(() => {
+      if (!pendingRef.current) return;
+      const rect = pendingRef.current.getBoundingClientRect();
+      setPendingFlip({
+        x: rect.right > window.innerWidth,
+        y: rect.bottom > window.innerHeight,
+      });
+    });
+  }, [pendingPin]);
 
   // Open thread from URL hash (e.g. #apostil-threadId)
   useEffect(() => {
@@ -420,7 +435,15 @@ export function CommentOverlay() {
             >
               +
             </div>
-            <div className="absolute ml-5 -mt-3 w-72">
+            <div
+              ref={pendingRef}
+              className="absolute w-72"
+              style={{
+                marginLeft: pendingFlip.x ? -308 : 20,
+                marginTop: pendingFlip.y ? undefined : -12,
+                ...(pendingFlip.y ? { bottom: 0 } : {}),
+              }}
+            >
               <div className="bg-white rounded-xl shadow-2xl border border-neutral-200 p-3">
                 <div className="flex items-center gap-2 mb-2">
                   <p className="text-xs text-neutral-500">New comment</p>
@@ -435,12 +458,6 @@ export function CommentOverlay() {
                   placeholder="What's on your mind?"
                   autoFocus
                 />
-                <button
-                  onClick={cancelPending}
-                  className="mt-2 text-xs text-neutral-400 hover:text-neutral-600 transition-colors"
-                >
-                  Cancel
-                </button>
               </div>
             </div>
           </div>
@@ -450,7 +467,10 @@ export function CommentOverlay() {
       {/* Comment mode hint */}
       {commentMode && !pendingPin && !showingUserPrompt && (
         <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[60] pointer-events-none">
-          <div className="bg-neutral-900/80 text-white text-sm px-4 py-2 rounded-full backdrop-blur-sm">
+          <div
+            className="text-white text-sm px-4 py-2 rounded-full backdrop-blur-sm"
+            style={{ backgroundColor: `color-mix(in oklab, ${brandColor} 80%, transparent)` }}
+          >
             Click anywhere to add a comment
           </div>
         </div>

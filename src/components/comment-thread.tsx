@@ -31,10 +31,20 @@ export function ApostilThreadPopover({
   const isOpen = activeThreadId === thread.id;
 
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+  const [flip, setFlip] = useState<{ x: boolean; y: boolean }>({ x: false, y: false });
 
   const updatePos = useCallback(() => {
     setPos(resolvePosition(thread, overlayRef.current));
   }, [thread, overlayRef]);
+
+  // Check if popover overflows viewport and flip accordingly
+  useEffect(() => {
+    if (!isOpen || !pos || !ref.current) return;
+    const rect = ref.current.getBoundingClientRect();
+    const flipX = rect.right > window.innerWidth;
+    const flipY = rect.bottom > window.innerHeight;
+    setFlip({ x: flipX, y: flipY });
+  }, [isOpen, pos]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -67,8 +77,14 @@ export function ApostilThreadPopover({
   return (
     <div
       ref={ref}
-      className="absolute z-[70] ml-5 -mt-3"
-      style={{ left: pos.left, top: pos.top }}
+      className="absolute z-[70]"
+      style={{
+        left: pos.left,
+        top: pos.top,
+        marginLeft: flip.x ? -340 : 20,
+        marginTop: flip.y ? -12 : -12,
+        ...(flip.y ? { transform: "translateY(-100%)" } : {}),
+      }}
       onClick={(e) => e.stopPropagation()}
     >
       <div className="w-80 bg-white rounded-xl shadow-2xl border border-neutral-200 overflow-hidden">

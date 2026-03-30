@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useApostil } from "../context";
 
 export function UserPrompt() {
-  const { user, setUser, commentMode } = useApostil();
+  const { user, setUser, commentMode, brandColor } = useApostil();
   const [name, setName] = useState("");
 
   // Only show when comment mode is activated and no user is set
@@ -44,8 +44,9 @@ export function UserPrompt() {
         <button
           onClick={handleSubmit}
           disabled={!name.trim()}
-          className="w-full py-2 rounded-lg bg-neutral-900 text-white text-sm font-medium
-                     disabled:opacity-30 hover:bg-neutral-700 transition-colors"
+          className="w-full py-2 rounded-lg text-white text-sm font-medium
+                     disabled:opacity-30 transition-colors"
+          style={{ backgroundColor: brandColor }}
         >
           Continue
         </button>

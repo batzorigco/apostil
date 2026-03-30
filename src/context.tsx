@@ -23,6 +23,7 @@ type ApostilContextValue = {
   commentMode: boolean;
   activeThreadId: string | null;
   sidebarOpen: boolean;
+  brandColor: string;
   setCommentMode: (on: boolean) => void;
   setActiveThreadId: (id: string | null) => void;
   setSidebarOpen: (open: boolean) => void;
@@ -39,10 +40,12 @@ const ApostilContext = createContext<ApostilContextValue | null>(null);
 export function ApostilProvider({
   pageId,
   storage,
+  brandColor = "#171717",
   children,
 }: {
   pageId: string;
   storage?: ApostilStorage;
+  brandColor?: string;
   children: ReactNode;
 }) {
   const adapter = storage ?? defaultAdapter;
@@ -64,6 +67,7 @@ export function ApostilProvider({
   useEffect(() => {
     pageIdRef.current = pageId;
     setLoaded(false);
+    hadThreadsRef.current = false;
     debug.log("loading threads for pageId:", pageId);
     adapter.load(pageId).then((t) => {
       // Only apply if pageId hasn't changed during the fetch
@@ -76,10 +80,20 @@ export function ApostilProvider({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pageId]);
 
+  // Track whether we've ever had threads on this page (to know if empty means "deleted all")
+  const hadThreadsRef = useRef(false);
+
   useEffect(() => {
-    if (loaded && pageIdRef.current === pageId && threads.length > 0) {
+    if (!loaded || pageIdRef.current !== pageId) return;
+    // Save when there are threads, or when threads were cleared (deletion)
+    if (threads.length > 0) {
+      hadThreadsRef.current = true;
       debug.log("saving", threads.length, "threads for pageId:", pageId);
       adapter.save(pageId, threads);
+    } else if (hadThreadsRef.current) {
+      debug.log("saving empty threads for pageId:", pageId);
+      adapter.save(pageId, threads);
+      hadThreadsRef.current = false;
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [threads, pageId, loaded]);
@@ -142,7 +156,7 @@ export function ApostilProvider({
 
   return (
     <ApostilContext.Provider value={{
-      threads, user, commentMode, activeThreadId, sidebarOpen,
+      threads, user, commentMode, activeThreadId, sidebarOpen, brandColor,
       setCommentMode, setActiveThreadId, setSidebarOpen,
       addThread, addReply, resolveThread, deleteThread, setUser,
       unresolvedCount,

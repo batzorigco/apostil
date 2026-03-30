@@ -98,12 +98,18 @@ Core context provider. Use directly for custom setups. When not using `npx apost
 ```tsx
 import "apostil/styles.css";
 
-<ApostilProvider pageId="my-page" storage={customAdapter}>
+<ApostilProvider pageId="my-page" storage={customAdapter} brandColor="#2563eb">
   {children}
   <CommentOverlay />
   <CommentToggle />
 </ApostilProvider>
 ```
+
+| Prop | Type | Default | Description |
+|------|------|---------|-------------|
+| `pageId` | `string` | required | Current page identifier |
+| `storage` | `ApostilStorage` | REST `/api/apostil` | Storage adapter |
+| `brandColor` | `string` | `"#171717"` | Accent color for buttons, tabs, and UI elements |
 
 ### `<CommentOverlay>`
 

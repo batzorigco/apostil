@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { Send } from "../icons";
+import { useApostil } from "../context";
 
 export function CommentComposer({
   onSubmit,
@@ -12,12 +13,16 @@ export function CommentComposer({
   placeholder?: string;
   autoFocus?: boolean;
 }) {
+  const { brandColor } = useApostil();
   const [value, setValue] = useState("");
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     if (autoFocus) {
-      inputRef.current?.focus();
+      // Delay focus so it lands after the overlay click event completes
+      requestAnimationFrame(() => {
+        inputRef.current?.focus();
+      });
     }
   }, [autoFocus]);
 
@@ -50,8 +55,9 @@ export function CommentComposer({
         onClick={handleSubmit}
         disabled={!value.trim()}
         className="flex items-center justify-center w-8 h-8 rounded-lg
-                   bg-neutral-900 text-white disabled:opacity-30
-                   hover:bg-neutral-700 transition-colors shrink-0"
+                   text-white disabled:opacity-30
+                   transition-colors shrink-0"
+        style={{ backgroundColor: brandColor }}
       >
         <Send className="w-3.5 h-3.5" />
       </button>

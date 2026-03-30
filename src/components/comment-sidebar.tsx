@@ -29,6 +29,7 @@ export function CommentSidebar() {
     setSidebarOpen,
     setActiveThreadId,
     resolveThread,
+    brandColor,
   } = useApostil();
 
   const [tab, setTab] = useState<"page" | "all">("page");
@@ -84,9 +85,10 @@ export function CommentSidebar() {
           onClick={() => setTab("page")}
           className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-medium transition-colors ${
             tab === "page"
-              ? "text-neutral-900 border-b-2 border-neutral-900"
+              ? "border-b-2"
               : "text-neutral-400 hover:text-neutral-600"
           }`}
+          style={tab === "page" ? { color: brandColor, borderColor: brandColor } : undefined}
         >
           <FileText className="w-3 h-3" />
           This Page
@@ -100,9 +102,10 @@ export function CommentSidebar() {
           onClick={() => setTab("all")}
           className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-medium transition-colors ${
             tab === "all"
-              ? "text-neutral-900 border-b-2 border-neutral-900"
+              ? "border-b-2"
               : "text-neutral-400 hover:text-neutral-600"
           }`}
+          style={tab === "all" ? { color: brandColor, borderColor: brandColor } : undefined}
         >
           <Globe className="w-3 h-3" />
           All Pages
