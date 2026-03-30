@@ -285,4 +285,4 @@ export function CommentPin({
   return <OverlayPin key={`overlay-${thread.id}`} thread={thread} index={index} overlayRef={overlayRef} />;
 }
 
-export { resolvePosition, findTargetElement };
+export { resolvePosition };

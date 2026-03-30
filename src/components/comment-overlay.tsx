@@ -315,12 +315,6 @@ export function CommentOverlay() {
     [pendingPin, addThread]
   );
 
-  const cancelPending = useCallback(() => {
-    setPendingPin(null);
-    setPendingPixel(null);
-    setCommentMode(false);
-  }, [setCommentMode]);
-
   // Calculate flip based on click position relative to viewport
   useEffect(() => {
     if (!pendingPixel || !overlayRef.current) return;
@@ -337,17 +331,17 @@ export function CommentOverlay() {
   // Open thread from URL hash (e.g. #apostil-threadId)
   useEffect(() => {
     const hash = window.location.hash;
-    console.log("[apostil] hash check:", hash, "threads:", threads.length, threads.map(t => t.id));
+    debug.log("hash check:", hash, "threads:", threads.length);
     if (!hash.startsWith("#apostil-")) return;
     const threadId = hash.replace("#apostil-", "");
-    console.log("[apostil] looking for thread:", threadId);
+    debug.log("looking for thread:", threadId);
     // Wait for threads to load before activating
     if (threads.length === 0) {
-      console.log("[apostil] no threads loaded yet, waiting...");
+      debug.log("no threads loaded yet, waiting...");
       return;
     }
     const found = threads.find((t) => t.id === threadId);
-    console.log("[apostil] found thread:", found ? "yes" : "no");
+    debug.log("found thread:", found ? "yes" : "no");
     if (found) {
       setActiveThreadId(threadId);
       // Clean hash from URL without triggering navigation
