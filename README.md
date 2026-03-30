@@ -40,7 +40,7 @@ This will:
 npm run dev
 ```
 
-Press `C` on any page to start commenting. That's it.
+Press `C` on any page to start commenting. On your first comment, you'll be prompted to enter your name — this is stored locally and used for all future comments. Click anywhere to place a pin, type your comment, and press `Enter` to save.
 
 ## How It Works
 
@@ -53,7 +53,13 @@ Comments are stored as JSON files in `.apostil/`:
 └── dashboard--settings.json
 ```
 
-The wrapper auto-detects the current page from `usePathname()` and loads the corresponding comments. Every page in your app gets commenting automatically.
+The wrapper auto-detects the current page from `usePathname()` and loads the corresponding comments. Every page in your app gets commenting automatically. Comments persist across page refreshes and dev server restarts.
+
+Click a pin to open its thread — you can reply to existing comments or resolve the thread. Resolved threads stay accessible but are visually distinguished.
+
+### Shareable Links
+
+Apostil supports hash-based thread links. Append `#apostil-<threadId>` to any URL to deep-link directly to a comment thread. The sidebar's **All Pages** view uses this to navigate across pages and open the target thread automatically.
 
 ## Modes
 
@@ -78,7 +84,7 @@ npm uninstall apostil
 
 | Key | Action |
 |-----|--------|
-| `C` | Toggle comment mode |
+| `C` | Toggle comment mode (modifier keys like `Cmd+C` / `Ctrl+C` are not intercepted) |
 | `Escape` | Cancel unsaved comment / exit comment mode |
 | `Enter` | Submit comment |
 
