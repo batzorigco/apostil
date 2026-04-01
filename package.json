@@ -1,6 +1,6 @@
 {
   "name": "apostil",
-  "version": "0.1.7",
+  "version": "0.2.0",
   "description": "Lightweight, Figma-like commenting for React & Next.js — pin comments directly on your UI",
   "license": "MIT",
   "author": "Batzorigco",
