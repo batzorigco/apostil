@@ -34,6 +34,8 @@ export default function RootLayout({
 `,
     "utf-8"
   );
+  // Create next.config.js so framework detection works
+  await fs.writeFile(path.join(tmp, "next.config.js"), "module.exports = {};\n", "utf-8");
   // Create a .gitignore
   await fs.writeFile(path.join(tmp, ".gitignore"), "node_modules/\n", "utf-8");
   return tmp;

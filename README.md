@@ -1,12 +1,12 @@
 # Apostil
 
-Figma-like commenting tool for React & Next.js. Leave comments directly on the Web App UI, and never miss a feedback.
+Figma-like commenting tool for React. Leave comments directly on the Web App UI, and never miss a feedback. Works with Next.js and Vite.
 
 ## What can it do?
 
 - **Smart target detection** — auto-anchors to nearest meaningful element
 - **Project level view** — see every comment across your project in one sidebar, like Figma.
-- **SSR-safe** — works with Next.js App Router
+- **SSR-safe** — works with Next.js App Router and Vite + React
 - **Ships its own CSS** — no Tailwind config needed in your project
 
 ## Quick Start Guide
@@ -29,11 +29,11 @@ npx apostil init --dev       # dev + staging environments
 npx apostil init --public    # all environments including production
 ```
 
-This will:
-- Create `app/api/apostil/route.ts` — API route for comment storage
-- Create `components/apostil-wrapper.tsx` — pre-configured wrapper with env guard
-- Create `.apostil/` directory and add it to `.gitignore`
-- **Automatically wrap `{children}` in your root layout** with `<ApostilWrapper>`
+The CLI auto-detects your framework (Next.js or Vite) and sets up accordingly:
+
+**Next.js** — creates API route for file-based storage, wrapper component, injects into root layout.
+
+**Vite + React** — creates wrapper component with localStorage adapter, injects into `App.tsx` or `main.tsx`. Uses `react-router-dom` for page detection if available.
 
 **3. Start your project and start commenting**
 
@@ -186,8 +186,7 @@ __apostil_debug.disable()
 ## Requirements
 
 - React 18+
-- Next.js (App Router)
-- Tailwind CSS
+- Next.js (App Router) or Vite + React
 
 ## License
 
