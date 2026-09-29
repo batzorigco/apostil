@@ -191,6 +191,12 @@ function findCommentTarget(el: HTMLElement, boundary: HTMLElement | null) {
 }
 
 export function CommentOverlay() {
+  // Keep the original JSX.Element public signature while the implementation
+  // waits for a browser portal host (and returns null during server rendering).
+  return <CommentOverlayPortal />;
+}
+
+function CommentOverlayPortal() {
   const { threads, pageId, loaded, commentMode, setCommentMode, user, addThread, activeThreadId, setActiveThreadId, brandColor } =
     useApostil();
   const [portalHost, setPortalHost] = useState<HTMLElement | null>(null);

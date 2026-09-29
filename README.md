@@ -2,6 +2,11 @@
 
 Figma-like commenting tool for React. Leave comments directly on the Web App UI, and never miss a feedback. Works with Next.js and Vite.
 
+**Upgrading from 0.2.0?** The MCP/task-workflow changes on this branch are unreleased.
+See the [upgrade guide](docs/upgrading-from-0.2.0.md) for mixed-version saves,
+custom adapters, storage requirements, and CSS changes. The CLI/server adapters
+require Node >=18.17; React/React DOM peers remain >=18.
+
 ## What can it do?
 
 - **Smart target detection** — auto-anchors to nearest meaningful element

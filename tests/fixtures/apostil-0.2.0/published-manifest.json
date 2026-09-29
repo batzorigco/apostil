@@ -1,7 +1,7 @@
 {
   "name": "apostil",
   "version": "0.2.0",
-  "description": "Lightweight, Figma-like commenting for React & Next.js \u2014 pin comments directly on your UI",
+  "description": "Lightweight, Figma-like commenting for React & Next.js — pin comments directly on your UI",
   "license": "MIT",
   "author": "Batzorigco",
   "repository": {
@@ -48,17 +48,7 @@
       "import": "./dist/adapters/nextjs.js",
       "require": "./dist/adapters/nextjs.cjs"
     },
-    "./styles.css": "./dist/styles.css",
-    "./adapters/agents": {
-      "types": "./dist/adapters/agents.d.ts",
-      "import": "./dist/adapters/agents.js",
-      "require": "./dist/adapters/agents.cjs"
-    },
-    "./adapters/vite": {
-      "types": "./dist/adapters/vite.d.ts",
-      "import": "./dist/adapters/vite.js",
-      "require": "./dist/adapters/vite.cjs"
-    }
+    "./styles.css": "./dist/styles.css"
   },
   "bin": {
     "apostil": "./bin/apostil.js"
@@ -67,7 +57,6 @@
     "dist",
     "bin",
     "README.md",
-    "docs/upgrading-from-0.2.0.md",
     "LICENSE"
   ],
   "scripts": {
@@ -75,16 +64,12 @@
     "dev": "tsup --watch",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:compat": "npm run build && vitest run tests/compatibility",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run build"
   },
   "peerDependencies": {
     "react": ">=18",
     "react-dom": ">=18"
-  },
-  "engines": {
-    "node": ">=18.17"
   },
   "devDependencies": {
     "@tailwindcss/cli": "^4.2.2",
@@ -100,10 +85,5 @@
     "tsup": "^8",
     "typescript": "^5",
     "vitest": "^4.1.2"
-  },
-  "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.30.1",
-    "smol-toml": "^1.9.0",
-    "zod": "^3.25.76"
   }
 }

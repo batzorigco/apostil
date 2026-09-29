@@ -33,6 +33,31 @@ function Controls() {
   return <div data-apostil-ui><button disabled={!api.loaded} onClick={() => { api.setUser("Alice"); api.setCommentMode(true); }}>Comment</button><button onClick={() => api.setSidebarOpen(true)}>List</button></div>;
 }
 
+it("does not turn a failed REST load into an empty save", async () => {
+  const fetch = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("Unavailable", { status: 503 }));
+  function ErrorState() {
+    const { storageError, addThread } = useApostil();
+    return <><p>{storageError}</p><button onClick={() => addThread(10, 20, "Should not save")}>Try comment</button></>;
+  }
+  render(<ApostilProvider pageId="failed-load"><Controls /><ErrorState /></ApostilProvider>);
+  await screen.findByText("Could not load comments (503).");
+  expect((screen.getByText("Comment") as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(screen.getByText("Try comment"));
+  expect(fetch).toHaveBeenCalledTimes(1);
+  expect(fetch).toHaveBeenCalledWith("/api/apostil?pageId=failed-load");
+});
+
+it("keeps legacy custom load/save adapters usable without silently reading a different all-pages endpoint", async () => {
+  const fetch = vi.spyOn(globalThis, "fetch");
+  const storage: ApostilStorage = { load: async () => [], save: vi.fn().mockResolvedValue(undefined) };
+  render(<ApostilProvider pageId="home" storage={storage}><Controls /><CommentSidebar /></ApostilProvider>);
+  await waitFor(() => expect((screen.getByText("Comment") as HTMLButtonElement).disabled).toBe(false));
+  fireEvent.click(screen.getByText("List"));
+  fireEvent.click(screen.getByText("All Pages"));
+  await screen.findByText("This storage adapter does not support all pages.");
+  expect(fetch).not.toHaveBeenCalled();
+});
+
 it("keeps global comment UI outside scrolling and transformed app containers", async () => {
   const view = render(<div data-testid="app-shell" style={{ transform: "translateY(-200px)", overflow: "hidden", position: "relative" }}>
     <ApostilProvider pageId="home" storage={{ load: async () => [], save: async () => {} }}>
