@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback, type RefObject } from "react";
+import { useEffect, useRef, type RefObject } from "react";
 import { Check, Trash2, Undo2 } from "../icons";
 import { useApostil } from "../context";
 import { CommentComposer } from "./comment-composer";
-import { resolvePosition } from "./comment-pin";
+import { TaskStatusBadge, TaskStatusSelect, TaskUpdateDetails } from "./task-status";
+import { usePinPosition } from "./comment-pin";
+import { usePopoverPosition } from "./popover-position";
 import type { ApostilThread as ApostilThreadType } from "../types";
 
 function timeAgo(iso: string): string {
@@ -25,42 +27,18 @@ export function ApostilThreadPopover({
   thread: ApostilThreadType;
   overlayRef: RefObject<HTMLDivElement | null>;
 }) {
-  const { activeThreadId, setActiveThreadId, addReply, resolveThread, deleteThread, user } =
+  const { activeThreadId, sidebarOpen, setActiveThreadId, addReply, resolveThread, deleteThread, user } =
     useApostil();
   const ref = useRef<HTMLDivElement>(null);
   const isOpen = activeThreadId === thread.id;
 
-  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
-  const [flip, setFlip] = useState<{ x: boolean; y: boolean }>({ x: false, y: false });
-
-  const updatePos = useCallback(() => {
-    setPos(resolvePosition(thread, overlayRef.current));
-  }, [thread, overlayRef]);
-
-  // Check if popover overflows viewport and flip accordingly
-  useEffect(() => {
-    if (!isOpen || !pos || !ref.current) return;
-    const rect = ref.current.getBoundingClientRect();
-    const flipX = rect.right > window.innerWidth;
-    const flipY = rect.bottom > window.innerHeight;
-    setFlip({ x: flipX, y: flipY });
-  }, [isOpen, pos]);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    updatePos();
-    window.addEventListener("resize", updatePos);
-    // Track scroll on any container so popover follows the pin
-    document.addEventListener("scroll", updatePos, true);
-    return () => {
-      window.removeEventListener("resize", updatePos);
-      document.removeEventListener("scroll", updatePos, true);
-    };
-  }, [isOpen, updatePos]);
+  const pos = usePinPosition(thread, overlayRef, isOpen);
+  const placement = usePopoverPosition(pos, overlayRef, ref, isOpen, sidebarOpen);
 
   useEffect(() => {
     if (!isOpen) return;
     const handler = (e: MouseEvent) => {
+      if (e.target instanceof Element && e.target.closest('[data-apostil-ui="sidebar"]')) return;
       if (ref.current && !ref.current.contains(e.target as Node)) {
         setActiveThreadId(null);
       }
@@ -76,38 +54,38 @@ export function ApostilThreadPopover({
 
   return (
     <div
+      data-apostil-ui="thread"
+      onPointerDown={e => e.stopPropagation()}
+      onMouseDown={e => e.stopPropagation()}
       ref={ref}
       className="absolute z-[70]"
       style={{
-        left: pos.left,
-        top: pos.top,
-        marginLeft: flip.x ? -340 : 20,
-        marginTop: flip.y ? -12 : -12,
-        ...(flip.y ? { transform: "translateY(-100%)" } : {}),
+        left: placement?.left ?? pos.left,
+        top: placement?.top ?? pos.top,
+        visibility: placement ? "visible" : "hidden",
+        width: "min(320px, calc(100vw - 24px))",
       }}
       onClick={(e) => e.stopPropagation()}
     >
-      <div className="w-80 bg-white rounded-xl shadow-2xl border border-neutral-200 overflow-hidden">
+      <div className="w-full bg-white rounded-xl shadow-2xl border border-neutral-200 overflow-hidden flex flex-col" style={{ maxHeight: "calc(100dvh - 24px)", boxSizing: "border-box" }}>
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-2.5 border-b border-neutral-100 bg-neutral-50">
-          <div className="flex items-center gap-2">
+        <div className="flex items-center justify-between gap-2 px-4 py-2.5 border-b border-neutral-100 bg-neutral-50 shrink-0">
+          <div className="flex flex-wrap min-w-0 items-center gap-2">
             <span className="text-xs font-medium text-neutral-500">
               {thread.comments.length} {thread.comments.length === 1 ? "comment" : "comments"}
             </span>
             {thread.targetLabel && (
-              <span className="text-[10px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded font-medium">
+              <span className="text-[10px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded font-medium break-words min-w-0">
                 {thread.targetLabel}
               </span>
             )}
-            {thread.resolved && (
-              <span className="text-[10px] text-emerald-600 font-medium">Resolved</span>
-            )}
+            <TaskStatusBadge thread={thread} />
           </div>
-          <div className="flex gap-1">
+          <div className="flex gap-1 shrink-0">
             <button
               onClick={() => resolveThread(thread.id)}
               className="p-1 rounded hover:bg-neutral-200 transition-colors"
-              title={thread.resolved ? "Reopen" : "Resolve"}
+              title={thread.resolved ? "Reopen task" : "Complete task"}
             >
               {thread.resolved ? (
                 <Undo2 className="w-3.5 h-3.5 text-neutral-500" />
@@ -125,8 +103,9 @@ export function ApostilThreadPopover({
           </div>
         </div>
 
+        <div className="px-4 py-2 border-b border-neutral-100 shrink-0"><TaskStatusSelect thread={thread} /></div>
         {/* Comments */}
-        <div className="max-h-64 overflow-y-auto">
+        <div data-apostil-ui="thread-messages" className="max-h-64 min-h-0 overflow-y-auto" style={{ overscrollBehavior: "contain", overflowWrap: "anywhere" }}>
           {thread.comments.map((comment) => (
             <div key={comment.id} className="px-4 py-3 border-b border-neutral-50 last:border-0">
               <div className="flex items-center gap-2 mb-1">
@@ -146,13 +125,14 @@ export function ApostilThreadPopover({
               <p className="text-sm text-neutral-700 leading-relaxed pl-7">
                 {comment.body}
               </p>
+              <div className="pl-7"><TaskUpdateDetails comment={comment} /></div>
             </div>
           ))}
         </div>
 
         {/* Reply */}
         {user && !thread.resolved && (
-          <div className="px-3 py-2.5 border-t border-neutral-100 bg-neutral-50/50">
+          <div className="px-3 py-2.5 border-t border-neutral-100 bg-neutral-50/50 shrink-0">
             <CommentComposer
               onSubmit={(body) => addReply(thread.id, body)}
               placeholder="Reply..."

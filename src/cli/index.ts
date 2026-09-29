@@ -2,6 +2,7 @@
 
 import fs from "fs/promises";
 import path from "path";
+import { parseArgs } from "node:util";
 
 type Mode = "personal" | "dev" | "public";
 type Framework = "nextjs" | "vite";
@@ -12,6 +13,11 @@ const command = args[0];
 if (command === "init") {
   const mode = parseMode(args.slice(1));
   init(mode);
+} else if (command === "mcp" || command === "connect") {
+  runMCPCommand(command, args.slice(1)).catch(error => {
+    console.error(`apostil: ${error instanceof Error ? error.message : String(error)}`);
+    process.exitCode = 1;
+  });
 } else if (command === "remove") {
   remove();
 } else if (command === "help" || command === "--help" || command === "-h" || !command) {
@@ -34,6 +40,15 @@ function printHelp() {
   Usage:
     npx apostil init [mode]   Set up apostil in your project
     npx apostil remove        Remove apostil from your project
+    npx apostil connect claude|codex   Connect an existing AI client via MCP
+    npx apostil mcp [options]          Run the local stdio MCP server
+
+  MCP options:
+    --project <path>    Project root (default: current directory)
+    --directory <path>  Comment folder inside the project (default: .apostil)
+    --read-only         Disable AI replies
+    --dry-run           Preview configuration (connect only)
+    --author <name>     Reply author (mcp only)
     npx apostil help          Show this help
 
   Modes:
@@ -44,6 +59,49 @@ function printHelp() {
   Supported frameworks: Next.js (App Router), Vite + React
   Framework is auto-detected from your project.
 `);
+}
+
+async function runMCPCommand(command: "mcp" | "connect", args: string[]) {
+  if (args.includes("--help") || args.includes("-h")) { printHelp(); return; }
+  const { values, positionals } = parseArgs({ args, allowPositionals: true, options: {
+    project: { type: "string", default: process.cwd() },
+    directory: { type: "string", default: ".apostil" },
+    "read-only": { type: "boolean", default: false },
+    "dry-run": { type: "boolean", default: false },
+    author: { type: "string", default: "AI reviewer" },
+  } });
+  if (command === "mcp" && values["dry-run"]) throw new Error("--dry-run is only supported by connect.");
+  if (!values.author.trim() || values.author.length > 100) throw new Error("Author must be 1–100 characters.");
+  const project = path.resolve(values.project as string);
+  const directory = values.directory as string;
+  // Validate directory boundaries even during connection setup.
+  const { CommentStore } = await import("../server/comment-store");
+  new CommentStore(project, directory);
+  if (command === "mcp") {
+    if (positionals.length) throw new Error("Usage: apostil mcp [--project <path>] [--directory <path>] [--read-only]");
+    const { startApostilMCP } = await import("../mcp/server");
+    await startApostilMCP({ project, directory, readOnly: !!values["read-only"], author: values.author as string });
+    return;
+  }
+  let client = positionals[0];
+  if (!client && process.stdin.isTTY) {
+    const { createInterface } = await import("node:readline/promises");
+    const prompt = createInterface({ input: process.stdin, output: process.stdout });
+    try { client = (await prompt.question("Connect Apostil to Claude or Codex? [claude/codex] ")).trim().toLowerCase(); }
+    finally { prompt.close(); }
+  }
+  if (positionals.length > 1 || (client !== "claude" && client !== "codex")) throw new Error("Choose a client: apostil connect claude OR apostil connect codex");
+  const { connectProject } = await import("../mcp/connect");
+  const result = await connectProject({ project, directory, client, cliPath: process.argv[1], readOnly: !!values["read-only"], dryRun: !!values["dry-run"] });
+  if (values["dry-run"]) { console.log(`${result.filename}\n\n${result.content}`); return; }
+  console.log(`  ${result.changed ? "Configured" : "Already configured"}: ${result.filename}`);
+  console.log(`  Restart ${client === "claude" ? "Claude Code and approve the Apostil project server when prompted" : "Codex in this trusted project to load the server"}.`);
+  console.log('  Ask your AI: "Use Apostil to address my open UI comments."');
+  console.log(`  Comments: ${path.resolve(project, directory)}`);
+  if (await detectFramework(project) === "vite") {
+    console.log("  Vite: add apostilStoragePlugin() from apostil/adapters/vite to vite.config and use createRestAdapter('/api/apostil') in your wrapper.");
+    console.log("  Existing browser-only comments need importLocalComments(adapter) once. See the README for the setup.");
+  }
 }
 
 // --- Framework detection ---

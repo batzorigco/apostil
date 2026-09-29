@@ -19,5 +19,18 @@ export type {
   ApostilUser,
   ApostilComment,
   ApostilThread,
+  ApostilTaskStatus,
+  ApostilTaskUpdate,
   ApostilStorage,
+  ApostilPage,
+  ApostilElement,
+  ApostilSurface,
+  ApostilCaptureContext,
+  ApostilAIProvider,
+  ApostilAIRequest,
+  ApostilAIResult,
+  ApostilAISender,
 } from "./types";
+
+export { buildAIPrompt, createAISender } from "./ai";
+export { getTaskStatus } from "./task-status";

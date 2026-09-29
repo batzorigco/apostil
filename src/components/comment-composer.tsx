@@ -21,7 +21,7 @@ export function CommentComposer({
     if (autoFocus) {
       // Delay focus past the full click cycle (mousedown → mouseup → click)
       const timer = setTimeout(() => {
-        inputRef.current?.focus();
+        inputRef.current?.focus({ preventScroll: true });
       }, 50);
       return () => clearTimeout(timer);
     }
@@ -48,7 +48,7 @@ export function CommentComposer({
         }}
         placeholder={placeholder}
         rows={1}
-        className="flex-1 resize-none rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-sm
+        className="flex-1 min-w-0 resize-none rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-sm
                    placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-300
                    min-h-[36px] max-h-[120px]"
       />

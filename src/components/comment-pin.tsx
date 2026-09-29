@@ -1,77 +1,68 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef, type RefObject } from "react";
+import { useState, useEffect, useRef, type RefObject } from "react";
 import { createPortal } from "react-dom";
+import { getTaskStatus } from "../task-status";
 import { useApostil } from "../context";
 import type { ApostilThread } from "../types";
 
-/**
- * Find the target element using the stored targetId.
- * targetId can be a CSS selector or a data-comment-target value.
- */
-function findTargetElement(targetId: string): HTMLElement | null {
-  // First try as a CSS selector
-  try {
-    const el = document.querySelector(targetId);
-    if (el instanceof HTMLElement) return el;
-  } catch {
-    // Invalid selector — fall through
-  }
+import { findThreadTarget } from "../capture";
 
-  // Then try as a data-comment-target value
-  try {
-    const el = document.querySelector(`[data-comment-target="${CSS.escape(targetId)}"]`);
-    if (el instanceof HTMLElement) return el;
-  } catch {
-    // noop
-  }
-
-  return null;
-}
-
-/**
- * Resolves pixel position for a thread pin relative to the overlay.
- * Used only for NON-targeted pins (no targetId).
- */
-function resolveOverlayPosition(
-  thread: ApostilThread,
-  overlayEl: HTMLElement | null
-): { left: number; top: number } | null {
+export function resolvePosition(thread: ApostilThread, overlayEl: HTMLElement | null): { left: number; top: number } | null {
   if (!overlayEl) return null;
-  const overlayRect = overlayEl.getBoundingClientRect();
-  return {
-    left: (thread.pinX / 100) * overlayRect.width,
-    top: (thread.pinY / 100) * overlayRect.height,
-  };
-}
-
-/**
- * Resolves pixel position relative to the overlay, for targeted pins.
- * Used by the thread popover which always renders in the overlay.
- */
-function resolvePosition(
-  thread: ApostilThread,
-  overlayEl: HTMLElement | null
-): { left: number; top: number } | null {
-  if (!overlayEl) return null;
-  const overlayRect = overlayEl.getBoundingClientRect();
-
-  if (thread.targetId) {
-    const target = findTargetElement(thread.targetId);
-    if (target) {
-      const targetRect = target.getBoundingClientRect();
-      return {
-        left: targetRect.left - overlayRect.left + (thread.pinX / 100) * targetRect.width,
-        top: targetRect.top - overlayRect.top + (thread.pinY / 100) * targetRect.height,
-      };
+  const overlay = overlayEl.getBoundingClientRect();
+  if (thread.targetId || thread.context) {
+    const target = findThreadTarget(thread);
+    if (!target) return null;
+    const rect = target.getBoundingClientRect();
+    const x = rect.left + thread.pinX / 100 * rect.width;
+    const y = rect.top + thread.pinY / 100 * rect.height;
+    // Hide pins clipped by a scrolling panel.
+    for (let parent = target.parentElement; parent; parent = parent.parentElement) {
+      const style = getComputedStyle(parent);
+      const bounds = parent.getBoundingClientRect();
+      if (/auto|scroll|hidden|clip/.test(style.overflowX) && (x < bounds.left || x > bounds.right)) return null;
+      if (/auto|scroll|hidden|clip/.test(style.overflowY) && (y < bounds.top || y > bounds.bottom)) return null;
     }
-    return null;
+    // A sticky/fixed target may sit behind other content while still having a
+    // viewport rect. Do not float its pin above the section covering it.
+    if (x < 0 || y < 0 || x >= window.innerWidth || y >= window.innerHeight) return null;
+    if (typeof document.elementsFromPoint === "function") {
+      const front = document.elementsFromPoint(x, y).find(element => !element.closest("[data-apostil-ui]"));
+      if (!front || !target.contains(front)) return null;
+    }
+    return { left: x - overlay.left, top: y - overlay.top };
   }
+  return { left: thread.pinX / 100 * overlay.width, top: thread.pinY / 100 * overlay.height };
+}
 
-  return {
-    left: (thread.pinX / 100) * overlayRect.width,
-    top: (thread.pinY / 100) * overlayRect.height,
-  };
+export function usePinPosition(thread: ApostilThread, overlayRef: RefObject<HTMLDivElement | null>, enabled = true) {
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+  useEffect(() => {
+    if (!enabled) return;
+    let frame = 0;
+    const update = () => {
+      const next = resolvePosition(thread, overlayRef.current);
+      setPos(previous => previous?.left === next?.left && previous?.top === next?.top ? previous : next);
+    };
+    const schedule = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(update); };
+    update();
+    const observer = new MutationObserver(schedule);
+    observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["class", "style", "open", "hidden", "data-state", "aria-hidden"] });
+    const resize = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(schedule);
+    const target = findThreadTarget(thread);
+    if (target) resize?.observe(target);
+    window.addEventListener("resize", schedule);
+    document.addEventListener("scroll", schedule, true);
+    document.addEventListener("toggle", schedule, true);
+    return () => {
+      cancelAnimationFrame(frame); observer.disconnect(); resize?.disconnect();
+      window.removeEventListener("resize", schedule);
+      document.removeEventListener("scroll", schedule, true);
+      document.removeEventListener("toggle", schedule, true);
+    };
+  }, [thread, overlayRef, enabled]);
+  return pos;
 }
 
 // ─── Pin button (shared rendering) ────────────────────────────────
@@ -107,6 +98,8 @@ function PinButton({
   return (
     <>
       <button
+        type="button"
+        aria-label={`Open comment ${index + 1}${getTaskStatus(thread) === "needs_review" ? " — Needs review" : ""}`}
         ref={buttonRef}
         onClick={onClick}
         onMouseEnter={() => setHovered(true)}
@@ -122,14 +115,14 @@ function PinButton({
             ${isActive ? "scale-125 ring-2 ring-white ring-offset-2" : "hover:scale-110"}
             ${thread.resolved ? "opacity-40" : ""}
           `}
-          style={{ backgroundColor: authorColor }}
+          style={{ backgroundColor: getTaskStatus(thread) === "needs_review" ? "#b45309" : authorColor }}
         >
           {index + 1}
         </div>
         {!thread.resolved && !isActive && (
           <div
             className="absolute inset-0 rounded-full animate-ping opacity-20"
-            style={{ backgroundColor: authorColor }}
+            style={{ backgroundColor: getTaskStatus(thread) === "needs_review" ? "#b45309" : authorColor }}
           />
         )}
       </button>
@@ -151,138 +144,17 @@ function PinButton({
   );
 }
 
-// ─── Targeted pin (portals into the target element) ───────────────
-
-function TargetedPin({
-  thread,
-  index,
-}: {
-  thread: ApostilThread;
-  index: number;
+export function CommentPin({ thread, index, overlayRef }: {
+  thread: ApostilThread; index: number; overlayRef: RefObject<HTMLDivElement | null>;
 }) {
   const { activeThreadId, setActiveThreadId } = useApostil();
-  const isActive = activeThreadId === thread.id;
-  const [targetEl, setTargetEl] = useState<HTMLElement | null>(null);
-
-  useEffect(() => {
-    if (!thread.targetId) return;
-
-    function tryFind() {
-      const el = findTargetElement(thread.targetId!);
-      if (el) {
-        const pos = getComputedStyle(el).position;
-        if (pos === "static") el.style.position = "relative";
-        setTargetEl(el);
-      } else {
-        setTargetEl(null);
-      }
-    }
-
-    tryFind();
-
-    // Watch for DOM changes — target element may appear/disappear (popovers, dialogs)
-    const observer = new MutationObserver(() => tryFind());
-    observer.observe(document.body, { childList: true, subtree: true });
-
-    return () => observer.disconnect();
-  }, [thread.targetId]);
-
-  if (!targetEl) return null;
-
-  return createPortal(
-    <div
-      className="absolute pointer-events-auto"
-      style={{
-        left: `${thread.pinX}%`,
-        top: `${thread.pinY}%`,
-        transform: "translate(-50%, -50%)",
-        zIndex: 10,
-      }}
-    >
-      <PinButton
-        thread={thread}
-        index={index}
-        isActive={isActive}
-        onClick={(e) => {
-          e.stopPropagation();
-          setActiveThreadId(isActive ? null : thread.id);
-        }}
-      />
-    </div>,
-    targetEl
-  );
+  const pos = usePinPosition(thread, overlayRef);
+  if (!pos || thread.resolved) return null;
+  return <div data-apostil-ui="pin" className="absolute pointer-events-auto"
+    style={{ left: pos.left, top: pos.top, transform: "translate(-50%, -50%)", zIndex: 60 }}
+    onPointerDown={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
+    <PinButton thread={thread} index={index} isActive={activeThreadId === thread.id} onClick={e => {
+      e.preventDefault(); e.stopPropagation(); setActiveThreadId(activeThreadId === thread.id ? null : thread.id);
+    }} />
+  </div>;
 }
-
-// ─── Overlay pin (non-targeted, positioned in the overlay) ────────
-
-function OverlayPin({
-  thread,
-  index,
-  overlayRef,
-}: {
-  thread: ApostilThread;
-  index: number;
-  overlayRef: RefObject<HTMLDivElement | null>;
-}) {
-  const { activeThreadId, setActiveThreadId } = useApostil();
-  const isActive = activeThreadId === thread.id;
-  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
-
-  const updatePos = useCallback(() => {
-    setPos(resolveOverlayPosition(thread, overlayRef.current));
-  }, [thread, overlayRef]);
-
-  useEffect(() => {
-    updatePos();
-    window.addEventListener("resize", updatePos);
-    document.addEventListener("scroll", updatePos, true);
-    return () => {
-      window.removeEventListener("resize", updatePos);
-      document.removeEventListener("scroll", updatePos, true);
-    };
-  }, [updatePos]);
-
-  if (!pos) return null;
-
-  return (
-    <div
-      className="absolute pointer-events-auto"
-      style={{
-        left: pos.left,
-        top: pos.top,
-        transform: "translate(-50%, -50%)",
-        zIndex: 60,
-      }}
-    >
-      <PinButton
-        thread={thread}
-        index={index}
-        isActive={isActive}
-        onClick={(e) => {
-          e.stopPropagation();
-          setActiveThreadId(isActive ? null : thread.id);
-        }}
-      />
-    </div>
-  );
-}
-
-// ─── Public CommentPin (delegates to targeted or overlay) ─────────
-
-export function CommentPin({
-  thread,
-  index,
-  overlayRef,
-}: {
-  thread: ApostilThread;
-  index: number;
-  overlayRef: RefObject<HTMLDivElement | null>;
-}) {
-  if (thread.resolved) return null;
-  if (thread.targetId) {
-    return <TargetedPin key={`targeted-${thread.id}`} thread={thread} index={index} />;
-  }
-  return <OverlayPin key={`overlay-${thread.id}`} thread={thread} index={index} overlayRef={overlayRef} />;
-}
-
-export { resolvePosition };

@@ -19,6 +19,8 @@ export default defineConfig([
   {
     entry: {
       "adapters/nextjs": "src/adapters/nextjs.ts",
+      "adapters/vite": "src/adapters/vite.ts",
+      "adapters/agents": "src/adapters/agents.ts",
       "cli/index": "src/cli/index.ts",
     },
     format: ["esm", "cjs"],
