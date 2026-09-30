@@ -20,7 +20,8 @@ export function createApostilMCPServer(options: MCPOptions) {
   const author = options.author ?? "AI reviewer";
   const outcomeInstructions = options.readOnly
     ? "This MCP connection is read-only. Report changes, actual checks, and remaining human review in the conversation; comment replies and task status cannot be updated through this connection."
-    : "Use reply_to_comment for progress or missing context. Use complete_task only after fixing and verifying the feedback, with the outcome and actual checks performed. Use request_review with specific human checks or decisions when needed. Leave unresolved work open.";
+    : "After implementing changes for a comment, call request_review to post a summary of the changes and actual checks performed, and mark the comment needs_review with specific human review instructions. This is the default handoff after agent work; do not leave the outcome only in the chat. Use reply_to_comment for progress or missing context, or supply status=needs_review and reviewInstructions to reply and request review together. Use complete_task only when the user explicitly asks to close the task and the fix has been verified with no human review remaining. Leave unaddressed work open.";
+  const capabilities = { readOnly: !!options.readOnly, canReply: !options.readOnly, canUpdateStatus: !options.readOnly };
   const connectionInstructions = `${instructions} ${outcomeInstructions}`;
   const server = new McpServer({ name: "apostil", version: "0.2.0" }, { instructions: connectionInstructions });
 
@@ -34,6 +35,7 @@ export function createApostilMCPServer(options: MCPOptions) {
     const threads = pages.flatMap(page => page.threads).filter(t => status === "all" || (status === "open" ? !t.resolved : getTaskStatus(t) === (status === "resolved" ? "completed" : status)))
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
     return {
+      capabilities, workflow: outcomeInstructions,
       total: threads.length, nextOffset: offset + limit < threads.length ? offset + limit : null,
       threads: threads.slice(offset, offset + limit).map(t => ({
         pageId: t.pageId, threadId: t.id, resolved: t.resolved, status: getTaskStatus(t), createdAt: t.createdAt,
@@ -53,7 +55,7 @@ export function createApostilMCPServer(options: MCPOptions) {
     const thread = (await store.load(pageId)).find(t => t.id === threadId);
     if (!thread) throw new Error("Comment thread not found on this page.");
     return {
-      thread, status: getTaskStatus(thread),
+      thread, status: getTaskStatus(thread), capabilities, workflow: outcomeInstructions,
       reproduction: thread.context?.surfaces.map(surface => ({
         surface: surface.element.label || surface.kind,
         selector: surface.element.selector,
@@ -68,17 +70,21 @@ export function createApostilMCPServer(options: MCPOptions) {
 
   if (!options.readOnly) server.registerTool("reply_to_comment", {
     title: "Reply to a UI comment",
-    description: "Append an AI-authored reply to an existing Apostil thread. Explain changes, checks, or missing context. Does not resolve or delete the thread. Use a unique requestId for each reply and reuse it when retrying the same reply.",
-    inputSchema: { ...identity, body: z.string().trim().min(1).max(20000), requestId: z.string().regex(/^[A-Za-z0-9_-]{1,100}$/) },
+    description: "Append an AI-authored reply to an existing Apostil thread. After implementing changes, include status=needs_review and reviewInstructions to post the outcome and change status atomically (or use request_review). Omitting status preserves the current status for progress replies. Does not resolve or delete the thread. Use a unique requestId for each reply and reuse it when retrying the same reply.",
+    inputSchema: { ...identity, body: z.string().trim().min(1).max(20000), status: z.literal("needs_review").optional(), reviewInstructions: z.string().trim().min(1).max(20000).optional(), requestId: z.string().regex(/^[A-Za-z0-9_-]{1,100}$/) },
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
-  }, async ({ pageId, threadId, body, requestId }) => safely(async () => ({ thread: await store.reply(pageId, threadId, body, requestId, author) })));
+  }, async ({ pageId, threadId, body, requestId, status, reviewInstructions }) => safely(async () => {
+    if ((status === "needs_review") !== (reviewInstructions !== undefined)) throw new Error("To request review, supply both status=needs_review and reviewInstructions, or use request_review.");
+    return { thread: await store.reply(pageId, threadId, body, requestId, author,
+      status ? { status, details: reviewInstructions! } : undefined) };
+  }));
 
   if (!options.readOnly) {
     const taskSchema = { ...identity, summary: z.string().trim().min(1).max(20000), requestId: z.string().regex(/^[A-Za-z0-9_-]{1,100}$/) };
     const writeAnnotations = { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false };
     server.registerTool("complete_task", {
       title: "Complete a UI task",
-      description: "Mark feedback completed and append an AI-authored outcome in one atomic update. Only use after implementing and verifying the fix. Supply the actual checks performed; if human inspection or approval remains, use request_review instead. Reuse requestId only for an identical retry. Reviewers can reopen completed tasks.",
+      description: "Mark feedback completed and append an AI-authored outcome in one atomic update. Only use when the user explicitly asks to close the task, after implementing and verifying the fix. Default to request_review after agent work. Supply the actual checks performed; if human inspection or approval remains, use request_review instead. Reuse requestId only for an identical retry. Reviewers can reopen completed tasks.",
       inputSchema: { ...taskSchema, verification: z.string().trim().min(1).max(20000) },
       annotations: writeAnnotations,
     }, async ({ pageId, threadId, summary, verification, requestId }) => safely(async () => ({
@@ -86,7 +92,7 @@ export function createApostilMCPServer(options: MCPOptions) {
     })));
     server.registerTool("request_review", {
       title: "Request human review",
-      description: "Keep feedback unfinished and mark it Needs review. Append what changed or is blocked and exactly what a human should inspect, decide, or test. Use for visual judgment, unavailable verification, or required human decisions. Reuse requestId only for an identical retry.",
+      description: "Default handoff after implementing changes: change the comment status to needs_review and append an AI reply in one atomic update. Keep feedback unfinished for human review. Append what changed or is blocked and exactly what a human should inspect, decide, or test. Use for visual judgment, unavailable verification, or required human decisions. Reuse requestId only for an identical retry.",
       inputSchema: { ...taskSchema, reviewInstructions: z.string().trim().min(1).max(20000) },
       annotations: writeAnnotations,
     }, async ({ pageId, threadId, summary, reviewInstructions, requestId }) => safely(async () => ({

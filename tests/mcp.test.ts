@@ -36,7 +36,8 @@ describe("real MCP stdio process", () => {
     const tools = await connection.client.listTools();
     expect(tools.tools.map(t => t.name)).toEqual(["list_comments", "get_comment_context", "reply_to_comment", "complete_task", "request_review"]);
     const listed = await connection.client.callTool({ name: "list_comments", arguments: {} });
-    expect(listed.structuredContent).toMatchObject({ total: 1, threads: [{ threadId: "thread-1", pageId: "settings" }] });
+    expect(connection.client.getInstructions()).toContain("After implementing changes for a comment, call request_review");
+    expect(listed.structuredContent).toMatchObject({ capabilities: { readOnly: false, canReply: true, canUpdateStatus: true }, total: 1, threads: [{ threadId: "thread-1", pageId: "settings" }] });
     const context = await connection.client.callTool({ name: "get_comment_context", arguments: { pageId: "settings", threadId: "thread-1" } });
     expect(context.structuredContent).toMatchObject({ thread });
     const args = { pageId: "settings", threadId: "thread-1", body: "Updated the button contrast.", requestId: "reply-1" };
@@ -68,6 +69,7 @@ describe("real MCP stdio process", () => {
     const { client } = await connect(true);
     expect((await client.listTools()).tools.map(t => t.name)).toEqual(["list_comments", "get_comment_context"]);
     expect((await client.callTool({ name: "list_comments", arguments: { limit: 1000 } })).isError).toBe(true);
+    expect((await client.callTool({ name: "list_comments", arguments: {} })).structuredContent).toMatchObject({ capabilities: { readOnly: true, canReply: false, canUpdateStatus: false } });
     const resource = await client.readResource({ uri: "apostil://project" });
     const prompt = await client.getPrompt({ name: "address_comments", arguments: {} });
     for (const content of [client.getInstructions(), JSON.stringify(resource.contents), JSON.stringify(prompt.messages)]) {

@@ -8,6 +8,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { startHTTPMCP } from "../src/mcp/http";
 import { MCPDevController } from "../src/mcp/dev";
+import { CommentStore } from "../src/server/comment-store";
 
 let project: string;
 const cleanup: (() => Promise<unknown>)[] = [];
@@ -64,4 +65,28 @@ it("reports occupied ports without claiming MCP is running", async () => {
   const response = await controller.handle(new Request("http://localhost:3000/api/apostil?mcp=1", { method: "POST", headers: { "X-Apostil-MCP": "1" }, body: JSON.stringify({ action: "start", port: occupied.port }) }));
   expect(response.status).toBe(400);
   expect(await response.json()).toMatchObject({ running: false, error: expect.stringContaining("in use") });
+});
+
+
+it("posts an agent outcome and requests review atomically through the connected HTTP server", async () => {
+  const store = new CommentStore(project);
+  await store.save("home", [{ id: "review", pageId: "home", pinX: 10, pinY: 10, resolved: false, createdAt: "now", comments: [] }]);
+  const server = await startHTTPMCP({ project, port: 0 });
+  cleanup.push(() => server.close());
+  const client = new Client({ name: "Review agent", version: "1" });
+  cleanup.push(() => client.close());
+  await client.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${server.port}/mcp`)));
+  const args = { pageId: "home", threadId: "review", body: "Fixed mobile spacing; layout tests pass.", status: "needs_review", reviewInstructions: "Check spacing on your phone.", requestId: "mobile-review" };
+  for (const invalid of [{ ...args, reviewInstructions: undefined }, { ...args, status: undefined }]) {
+    expect((await client.callTool({ name: "reply_to_comment", arguments: invalid })).isError).toBe(true);
+  }
+  expect((await store.load("home"))[0].comments).toHaveLength(0);
+  const outcome = await client.callTool({ name: "reply_to_comment", arguments: args });
+  expect(outcome.isError).not.toBe(true);
+  expect(outcome.structuredContent).toMatchObject({ thread: { status: "needs_review", resolved: false } });
+  await client.callTool({ name: "reply_to_comment", arguments: args });
+  const saved = (await store.load("home"))[0];
+  expect(saved.comments).toHaveLength(1);
+  expect(saved.comments[0]).toMatchObject({ body: args.body, taskUpdate: { status: "needs_review", details: args.reviewInstructions } });
+  expect((await client.callTool({ name: "get_comment_context", arguments: { pageId: "home", threadId: "review" } })).structuredContent).toMatchObject({ status: "needs_review", capabilities: { canUpdateStatus: true } });
 });

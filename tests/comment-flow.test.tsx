@@ -191,3 +191,22 @@ it("keeps the new-comment composer within a narrow screen instead of flipping of
     Object.defineProperty(window, "innerWidth", { configurable: true, value: originalWidth });
   }
 });
+
+it("shows a distinct review pin and the agent reply after refreshing an MCP update", async () => {
+  const original: ApostilThread = { id: "agent-review", pageId: "home", pinX: 10, pinY: 10, resolved: false, createdAt: "now", comments: [{ id: "original", threadId: "agent-review", author: { id: "user", name: "Reviewer", color: "#2563eb" }, body: "Fix this spacing", createdAt: "now" }] };
+  let remote = original;
+  const storage = { load: async () => [remote], save: async () => {} };
+  render(<ApostilProvider pageId="home" storage={storage}><Controls /><CommentOverlay /><CommentSidebar /></ApostilProvider>);
+  const pin = await screen.findByRole("button", { name: "Open comment 1" });
+  expect((pin.firstElementChild as HTMLElement).style.backgroundColor).toBe("rgb(37, 99, 235)");
+  remote = { ...original, status: "needs_review", comments: [...original.comments, { id: "agent", threadId: original.id, author: { id: "ai", name: "Claude", color: "#171717" }, body: "Adjusted spacing; tests pass.", createdAt: "now", taskUpdate: { status: "needs_review", details: "Check the mobile layout." } }] };
+  fireEvent.click(screen.getByText("List"));
+  fireEvent.click(screen.getByLabelText("Refresh comments"));
+  const reviewPin = await screen.findByRole("button", { name: "Open comment 1 — Needs review" });
+  expect((reviewPin.firstElementChild as HTMLElement).style.backgroundColor).toBe("rgb(180, 83, 9)");
+  expect((reviewPin.firstElementChild as HTMLElement).style.outline).toBe("3px solid #fde68a");
+  expect(screen.getByText("Needs review (1)")).toBeTruthy();
+  fireEvent.click(screen.getByText("Fix this spacing"));
+  expect(screen.getAllByText("Adjusted spacing; tests pass.").length).toBeGreaterThan(0);
+  expect(screen.getAllByText("Check the mobile layout.").length).toBeGreaterThan(0);
+});

@@ -79,6 +79,8 @@ function PinButton({
   onClick: (e: React.MouseEvent) => void;
 }) {
   const authorColor = thread.comments[0]?.author.color ?? "#df461c";
+  const needsReview = getTaskStatus(thread) === "needs_review";
+  const pinColor = needsReview ? "#b45309" : authorColor;
   const [hovered, setHovered] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const [tooltipPos, setTooltipPos] = useState<{ left: number; top: number } | null>(null);
@@ -99,7 +101,9 @@ function PinButton({
     <>
       <button
         type="button"
-        aria-label={`Open comment ${index + 1}${getTaskStatus(thread) === "needs_review" ? " — Needs review" : ""}`}
+        aria-label={`Open comment ${index + 1}${needsReview ? " — Needs review" : ""}`}
+        title={needsReview ? "Needs review — check the agent’s changes" : undefined}
+        data-status={getTaskStatus(thread)}
         ref={buttonRef}
         onClick={onClick}
         onMouseEnter={() => setHovered(true)}
@@ -115,18 +119,18 @@ function PinButton({
             ${isActive ? "scale-125 ring-2 ring-white ring-offset-2" : "hover:scale-110"}
             ${thread.resolved ? "opacity-40" : ""}
           `}
-          style={{ backgroundColor: getTaskStatus(thread) === "needs_review" ? "#b45309" : authorColor }}
+          style={{ backgroundColor: pinColor, ...(needsReview ? { outline: "3px solid #fde68a", outlineOffset: 2 } : {}) }}
         >
           {index + 1}
         </div>
-        {!thread.resolved && !isActive && (
+        {!thread.resolved && !isActive && !needsReview && (
           <div
             className="absolute inset-0 rounded-full animate-ping opacity-20"
-            style={{ backgroundColor: getTaskStatus(thread) === "needs_review" ? "#b45309" : authorColor }}
+            style={{ backgroundColor: pinColor }}
           />
         )}
       </button>
-      {thread.targetLabel && hovered && tooltipPos && createPortal(
+      {(thread.targetLabel || needsReview) && hovered && tooltipPos && createPortal(
         <div
           className="fixed whitespace-nowrap text-[10px] bg-neutral-800 text-white px-1.5 py-0.5 rounded pointer-events-none"
           style={{
@@ -136,7 +140,7 @@ function PinButton({
             zIndex: 999999,
           }}
         >
-          {thread.targetLabel}
+          {[thread.targetLabel, needsReview ? "Needs review" : null].filter(Boolean).join(" · ")}
         </div>,
         document.body
       )}
