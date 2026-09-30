@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, type ReactNode } from "react";
+import { useState, useEffect, useRef, type ReactNode } from "react";
 import { MCPSettings } from "./mcp-settings";
 import { SidebarIcon } from "./sidebar-icon";
 import { CommentComposer } from "./comment-composer";
@@ -23,7 +23,8 @@ type AllPagesData = { pageId: string; threads: ApostilThread[] }[];
 
 export function CommentSidebar() {
   const { threads, pageId, mcpEndpoint, loadAllThreads, storageError, refreshThreads,
-    sidebarOpen, setSidebarOpen, activeThreadId, setActiveThreadId, brandColor } = useApostil();
+    sidebarOpen, setSidebarOpen, activeThreadId, setActiveThreadId, commentMode, brandColor } = useApostil();
+  const ref = useRef<HTMLDivElement>(null);
   const [tab, setTab] = useState<"page" | "all">("page");
   const [allPages, setAllPages] = useState<AllPagesData>([]);
   const [loadingAll, setLoadingAll] = useState(false);
@@ -34,6 +35,8 @@ export function CommentSidebar() {
     if (thread.pageId !== pageId) {
       let route = thread.pageId === "home" ? "/" : "/" + thread.pageId.replace(/--/g, "/");
       if (thread.context?.url) { try { route = new URL(thread.context.url).pathname; } catch { /* Legacy fallback. */ } }
+      // Same path and no query means the host picks its page from state a link cannot reach; the hash waits for that page.
+      if (route === window.location.pathname && !window.location.search) setLocationHint(`This comment is on “${thread.pageId}”. Switch to that view to open it.`);
       window.location.href = route + "#apostil-" + encodeURIComponent(thread.id);
       return;
     }
@@ -46,6 +49,29 @@ export function CommentSidebar() {
     setLocationHint(scrollToThread(thread) ? "" : threadLocationHint(thread));
   };
   useEffect(() => { setLocationHint(""); }, [pageId, sidebarOpen]);
+  useEffect(() => {
+    if (!sidebarOpen) return;
+    const opener = document.activeElement as HTMLElement | null;
+    ref.current?.focus({ preventScroll: true });
+    return () => opener?.focus({ preventScroll: true });
+  }, [sidebarOpen]);
+  useEffect(() => {
+    if (!sidebarOpen) return;
+    const menus = () => Array.from(ref.current?.querySelectorAll<HTMLDetailsElement>(".apostil-thread-actions[open]") ?? []);
+    // Window capture runs before the overlay's document listeners, so a menu closes before its thread does.
+    const key = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      const open = menus();
+      if (open.length) open.forEach(menu => { menu.open = false; menu.querySelector("summary")!.focus(); });
+      else if (!activeThreadId && !commentMode && ref.current?.contains(document.activeElement)) setSidebarOpen(false);
+      else return;
+      e.preventDefault(); e.stopImmediatePropagation();
+    };
+    const press = (e: PointerEvent) => menus().forEach(menu => { if (!menu.contains(e.target as Node)) menu.open = false; });
+    window.addEventListener("keydown", key, true);
+    window.addEventListener("pointerdown", press, true);
+    return () => { window.removeEventListener("keydown", key, true); window.removeEventListener("pointerdown", press, true); };
+  }, [sidebarOpen, activeThreadId, commentMode, setSidebarOpen]);
   useEffect(() => {
     if (!sidebarOpen || tab !== "all") return;
     let cancelled = false;
@@ -72,19 +98,23 @@ export function CommentSidebar() {
     { label: "Completed", threads: threads.filter(t => getTaskStatus(t) === "completed") },
   ];
   return <ViewportPortal>
-    <div data-apostil-ui="sidebar" hidden={!sidebarOpen} style={{ zIndex: 2147483642, ...(!sidebarOpen ? { display: "none" } : {}) }}>
+    <div ref={ref} data-apostil-ui="sidebar" role="complementary" aria-label="Comments" tabIndex={-1} hidden={!sidebarOpen} style={{ zIndex: 2147483642, ...(!sidebarOpen ? { display: "none" } : {}) }}>
       <div className="apostil-sidebar-header">
         <SidebarIcon name="message" /><span>Comments</span>
         <button type="button" className="apostil-icon-button" title="Refresh comments" aria-label="Refresh comments" disabled={refreshing} onClick={() => void refresh()}><SidebarIcon name="refresh" /></button>
         <button type="button" className="apostil-icon-button" title="Close comments" aria-label="Close comments" onClick={() => setSidebarOpen(false)}><SidebarIcon name="close" /></button>
       </div>
-      <div className="apostil-sidebar-tabs">
-        <button type="button" aria-pressed={tab === "page"} onClick={() => setTab("page")} style={tab === "page" ? { color: brandColor, borderBottomColor: brandColor } : undefined}>
+      <div className="apostil-sidebar-tabs" role="tablist" aria-label="Comment scope" onKeyDown={e => {
+        if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+        setTab(tab === "page" ? "all" : "page");
+        e.currentTarget.querySelector<HTMLElement>('[aria-selected="false"]')!.focus();
+      }}>
+        <button type="button" role="tab" aria-selected={tab === "page"} tabIndex={tab === "page" ? 0 : -1} onClick={() => setTab("page")} style={tab === "page" ? { color: brandColor, borderBottomColor: brandColor } : undefined}>
           <SidebarIcon name="file" />This Page{openCount > 0 && <span className="apostil-count">{openCount}</span>}
         </button>
-        <button type="button" aria-pressed={tab === "all"} onClick={() => setTab("all")} style={tab === "all" ? { color: brandColor, borderBottomColor: brandColor } : undefined}><SidebarIcon name="globe" />All Pages</button>
+        <button type="button" role="tab" aria-selected={tab === "all"} tabIndex={tab === "all" ? 0 : -1} onClick={() => setTab("all")} style={tab === "all" ? { color: brandColor, borderBottomColor: brandColor } : undefined}><SidebarIcon name="globe" />All Pages</button>
       </div>
-      <div className="apostil-sidebar-list">
+      <div className="apostil-sidebar-list" role="tabpanel" aria-label={tab === "page" ? "This Page" : "All Pages"}>
         {storageError && <p role="alert" className="apostil-sidebar-error">{storageError} Refresh to retry.</p>}
         {loadError && <p role="alert" className="apostil-sidebar-error">{loadError}</p>}
         {locationHint && <p role="status" className="apostil-sidebar-hint">{locationHint}</p>}
@@ -96,7 +126,7 @@ export function CommentSidebar() {
         </> : loadingAll ? <p className="apostil-sidebar-empty">Loading...</p> : <>
           {!pages.length && !loadError && <p className="apostil-sidebar-empty">No comments in this project yet.</p>}
           {!!pages.length && <p className="apostil-sidebar-hint">{pages.reduce((sum, page) => sum + page.threads.filter(t => !t.resolved).length, 0)} open across {pages.length} pages</p>}
-          {pages.map(page => <ThreadGroup key={page.pageId} label={page.pageId.replace(/--/g, "/").replace(/-/g, ".")}>
+          {pages.map(page => <ThreadGroup key={page.pageId} label={page.pageId.replace(/--/g, "/")}>
             {[...page.threads].sort((a, b) => Number(a.resolved) - Number(b.resolved) || Number(getTaskStatus(b) === "needs_review") - Number(getTaskStatus(a) === "needs_review")).map(thread => <ThreadItem key={`${thread.pageId}:${thread.id}`} thread={thread} onSelect={() => selectThread(thread)} />)}
           </ThreadGroup>)}
         </>}

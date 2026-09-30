@@ -7,13 +7,22 @@ import { getTaskStatus } from "../task-status";
 import { isDeepStrictEqual } from "node:util";
 
 const MAX_FILE_SIZE = 8 * 1024 * 1024;
+const STALE_LOCK_MS = 10_000;
+/** Author id prefix reserved for replies created by CommentStore.reply. */
+export const AGENT_AUTHOR_PREFIX = "apostil-mcp:";
 const missing = (error: unknown) => (error as NodeJS.ErrnoException)?.code === "ENOENT";
+const validElement = (e: any) => !!e && typeof e.selector === "string" && typeof e.tag === "string";
+// Fields may be absent in older files, but whatever is present must have the shape readers dereference.
+const validContext = (c: any) => !!c && typeof c === "object" && !Array.isArray(c) &&
+  ["element", "anchor"].every(key => c[key] === undefined || validElement(c[key])) &&
+  (c.surfaces === undefined || (Array.isArray(c.surfaces) && c.surfaces.every((s: any) => !!s && typeof s.kind === "string" && validElement(s.element) && (s.trigger === undefined || validElement(s.trigger)))));
 
 export function validateThreads(value: unknown, pageId?: string): asserts value is ApostilThread[] {
   if (!Array.isArray(value) || value.some(t => !t || typeof t.id !== "string" || !t.id ||
     typeof t.pageId !== "string" || (pageId !== undefined && t.pageId !== pageId) ||
     typeof t.resolved !== "boolean" || !Number.isFinite(t.pinX) || !Number.isFinite(t.pinY) ||
     (t.status !== undefined && !["open", "needs_review", "completed"].includes(t.status)) ||
+    (t.context !== undefined && !validContext(t.context)) ||
     typeof t.createdAt !== "string" || !Array.isArray(t.comments) || t.comments.some((c: unknown) => {
       const comment = c as ApostilThread["comments"][number];
       return !comment || typeof comment.id !== "string" || comment.threadId !== t.id ||
@@ -49,13 +58,11 @@ export class CommentStore {
     return true;
   }
 
-  private file(pageId: string) {
+  private names(pageId: string) {
     if (!pageId || pageId.length > 512) throw new Error("Invalid page ID.");
-    // Match existing Next.js file names while rejecting collisions on read/write.
+    // 0.2.0 file names, kept so existing files stay readable: punctuation-only and non-ASCII IDs (including "/") are stored in .json.
     const name = pageId.replace(/[^a-zA-Z0-9_-]/g, "");
-    // 0.2.0 stored punctuation-only / non-ASCII IDs (including "/") in .json.
-    // Keep that filename; load() still checks the real page ID to prevent collisions.
-    return path.join(this.directory, `${name}.json`);
+    return [`${name}.json`, `${name}-${createHash("sha256").update(pageId).digest("hex").slice(0, 8)}.json`].map(file => path.join(this.directory, file));
   }
 
   private async readFile(file: string): Promise<ApostilThread[]> {
@@ -68,28 +75,40 @@ export class CommentStore {
       const data = JSON.parse(await handle.readFile("utf8"));
       validateThreads(data);
       return data;
-    } catch (error) { if (missing(error)) return []; throw error; }
-    finally { await handle?.close(); }
+    } catch (error) {
+      if (missing(error)) return [];
+      throw new Error(`${path.basename(file)}: ${error instanceof Error ? error.message : "unreadable"}`);
+    } finally { await handle?.close(); }
+  }
+
+  // The legacy name belongs to whichever page stored threads in it first; a different page whose ID sanitises
+  // to the same name lives in the hashed file, and stays there even after the legacy file empties.
+  private async read(pageId: string) {
+    const [legacy, hashed] = this.names(pageId);
+    let file = legacy, threads = await this.readFile(legacy);
+    if (threads.length ? threads[0].pageId !== pageId : await fs.lstat(hashed).then(() => true, () => false)) threads = await this.readFile(file = hashed);
+    if (threads.some(t => t.pageId !== pageId)) throw new Error(`Page ID collides with another stored page in ${path.basename(file)}.`);
+    return { file, threads };
   }
 
   async load(pageId: string): Promise<ApostilThread[]> {
-    const file = this.file(pageId);
-    if (!await this.ensureDirectory()) return [];
-    const threads = await this.readFile(file);
-    if (threads.some(t => t.pageId !== pageId)) throw new Error("Page ID collides with another stored page.");
-    return threads;
+    this.names(pageId);
+    return await this.ensureDirectory() ? (await this.read(pageId)).threads : [];
   }
 
-  async loadAll(): Promise<ApostilPage[]> {
+  /** A corrupt or inconsistent file is left out and described in `skipped` so the other pages still list. */
+  async loadAll(skipped: string[] = []): Promise<ApostilPage[]> {
     if (!await this.ensureDirectory()) return [];
     const files = (await fs.readdir(this.directory)).filter(file => /^[\w-]*\.json$/.test(file)).sort();
     const pages: ApostilPage[] = [];
     for (const file of files) {
-      const threads = await this.readFile(path.join(this.directory, file));
-      if (!threads.length) continue;
-      const pageId = threads[0].pageId;
-      if (threads.some(t => t.pageId !== pageId) || path.basename(this.file(pageId)) !== file) throw new Error(`Inconsistent page data in ${file}.`);
-      pages.push({ pageId, threads });
+      try {
+        const threads = await this.readFile(path.join(this.directory, file));
+        if (!threads.length) continue;
+        const pageId = threads[0].pageId;
+        if (threads.some(t => t.pageId !== pageId) || !this.names(pageId).some(name => path.basename(name) === file)) throw new Error("inconsistent page data.");
+        pages.push({ pageId, threads });
+      } catch (error) { const { message } = error as Error; skipped.push(message.startsWith(file) ? message : `${file}: ${message}`); }
     }
     const latest = (page: ApostilPage) => Math.max(...page.threads.map(t => Date.parse(t.createdAt) || 0));
     return pages.sort((a, b) => latest(b) - latest(a));
@@ -97,20 +116,25 @@ export class CommentStore {
 
   private async update(pageId: string, change: (threads: ApostilThread[]) => ApostilThread[]) {
     await this.ensureDirectory(true);
-    const file = this.file(pageId);
-    const lock = `${file}.lock`;
+    // Pages sharing a sanitised name share this lock, so choosing between the legacy and hashed file cannot race.
+    const lock = `${this.names(pageId)[0]}.lock`;
     const deadline = Date.now() + 3000;
     while (true) {
       try { await fs.mkdir(lock); break; }
       catch (error) {
         if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-        if (Date.now() >= deadline) throw new Error(`Comments are locked. Retry; if a writer crashed, remove ${path.basename(lock)} after it has stopped.`);
+        // A writer that crashed never removes its lock. Writes take milliseconds, so an old lock has no live owner.
+        const age = await fs.stat(lock).then(stat => Date.now() - stat.mtimeMs, () => 0);
+        if (age > STALE_LOCK_MS) { await fs.rmdir(lock).catch(() => {}); continue; }
+        if (Date.now() >= deadline) throw new Error(`Comments are locked. Retry; a lock left by a crashed writer clears itself after ${STALE_LOCK_MS / 1000} seconds.`);
         await new Promise(resolve => setTimeout(resolve, 25));
       }
     }
-    const temporary = `${file}.${randomUUID()}.tmp`;
+    let temporary: string | undefined;
     try {
-      const next = change(await this.load(pageId));
+      const { file, threads } = await this.read(pageId);
+      temporary = `${file}.${randomUUID()}.tmp`;
+      const next = change(threads);
       validateThreads(next, pageId);
       const data = JSON.stringify(next, null, 2);
       if (Buffer.byteLength(data) > MAX_FILE_SIZE) throw new Error("Comments exceed the 8 MB page limit.");
@@ -118,7 +142,7 @@ export class CommentStore {
       await fs.rename(temporary, file);
       return next;
     } finally {
-      try { await fs.unlink(temporary).catch(error => { if (!missing(error)) throw error; }); }
+      try { if (temporary) await fs.unlink(temporary).catch(error => { if (!missing(error)) throw error; }); }
       finally { await fs.rmdir(lock); }
     }
   }
@@ -184,7 +208,7 @@ export class CommentStore {
         ...(taskUpdate ? { status: taskUpdate.status, resolved: taskUpdate.status === "completed" } : {}),
         comments: [...t.comments, {
         id, threadId, body, createdAt: new Date().toISOString(),
-        author: { id: `apostil-mcp:${author}`, name: author, color: "#6366f1" },
+        author: { id: `${AGENT_AUTHOR_PREFIX}${author}`, name: author, color: "#6366f1" },
         ...(taskUpdate ? { taskUpdate } : {}),
       }] });
     });

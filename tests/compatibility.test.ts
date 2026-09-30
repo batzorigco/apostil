@@ -101,7 +101,12 @@ it.each(["/", "日本語", "!!!"])("loads and updates a published %s page file, 
   await store.reply(pageId, "t1", "Checked", "reply", "Codex");
   expect((await store.loadAll())[0]).toMatchObject({ pageId, threads: [{ comments: expect.arrayContaining([expect.objectContaining({ body: "Checked" })]) }] });
   expect(await (await old.GET(new Request(url))).json()).toEqual(await store.load(pageId));
-  await expect(store.load(pageId === "/" ? "!!!" : "/")).rejects.toThrow("collides");
+  // Another page with the same sanitized name gets its own file and leaves the published one alone.
+  const other = pageId === "/" ? "!!!" : "/";
+  expect(await store.load(other)).toEqual([]);
+  await store.save(other, [seed(other)]);
+  expect(await store.load(other)).toEqual([seed(other)]);
+  expect(await (await old.GET(new Request(url))).json()).toEqual(await store.load(pageId));
 });
 
 it("retains most-recent-first page ordering with actual page IDs", async () => {

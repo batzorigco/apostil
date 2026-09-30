@@ -211,3 +211,28 @@ describe("CLI", () => {
     });
   });
 });
+
+describe("mcp init", () => {
+  let tmpDir: string;
+  const stub = (name: string) => fs.mkdir(path.join(tmpDir, "node_modules", name), { recursive: true })
+    .then(() => fs.writeFile(path.join(tmpDir, "node_modules", name, "package.json"), "{}"));
+  const fails = (cmd: string) => { try { run(cmd, tmpDir); } catch (error) { return `${(error as { stdout: string }).stdout}${(error as { stderr: string }).stderr}`; } throw new Error("Expected the command to fail."); };
+  beforeEach(async () => { tmpDir = await createTempProject(); });
+  afterEach(async () => { await fs.rm(tmpDir, { recursive: true, force: true }); });
+
+  it("asks for a local apostil install before anything else", () => {
+    expect(fails("mcp init claude")).toContain("Install apostil in this project first");
+  });
+  it("prints the install command for the project's package manager and writes no config without a terminal", async () => {
+    await stub("apostil");
+    await stub("zod");
+    await fs.writeFile(path.join(tmpDir, "pnpm-lock.yaml"), "");
+    expect(fails("mcp init claude")).toContain("pnpm add -D @modelcontextprotocol/sdk smol-toml");
+    await expect(fs.access(path.join(tmpDir, ".mcp.json"))).rejects.toThrow();
+  });
+  it("writes the client entry once the MCP packages are installed", async () => {
+    for (const name of ["apostil", "@modelcontextprotocol/sdk", "zod", "smol-toml"]) await stub(name);
+    expect(run("mcp init claude", tmpDir)).toContain("Configured");
+    expect(await fs.readFile(path.join(tmpDir, ".mcp.json"), "utf-8")).toContain('"apostil"');
+  });
+});

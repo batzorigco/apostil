@@ -2,6 +2,7 @@ import type { ApostilCaptureContext, ApostilElement, ApostilSurface, ApostilThre
 
 export const SURFACE_SELECTOR = 'dialog, [role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"], [popover], [data-comment-surface], [data-radix-popper-content-wrapper], details';
 const ATTRIBUTES = ["data-comment-target", "data-testid", "data-test", "data-comment-source", "role", "aria-label", "aria-labelledby", "aria-controls", "aria-expanded", "aria-selected", "data-state", "name", "type"];
+const MAX_TEXT = 240;
 const quote = (value: string) => `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/[\n\r\f]/g, " ")}"`;
 const attrSelector = (name: string, value: string) => `[${name}=${quote(value)}]`;
 
@@ -10,6 +11,14 @@ function unique(selector: string, element: Element): boolean {
     const matches = document.querySelectorAll(selector);
     return matches.length === 1 && matches[0] === element;
   } catch { return false; }
+}
+
+// Do not collect input values, arbitrary data attributes, or Apostil's own text.
+function visibleText(element: Element | null): string {
+  if (!element || element.closest('[data-comment-private], input, textarea, select, [contenteditable]')) return "";
+  const clone = element.cloneNode(true) as Element;
+  clone.querySelectorAll('[data-apostil-ui], input, textarea, select, [contenteditable], [data-comment-private], script, style').forEach(el => el.remove());
+  return (clone.textContent ?? "").replace(/\s+/g, " ").trim().slice(0, MAX_TEXT);
 }
 
 export function describeElement(element: Element): ApostilElement {
@@ -39,20 +48,16 @@ export function describeElement(element: Element): ApostilElement {
     }
     selector = parts.join(" > ");
   }
-  // Do not collect input values, arbitrary data attributes, or Apostil's own text.
-  const clone = element.cloneNode(true) as Element;
-  clone.querySelectorAll('[data-apostil-ui], input, textarea, select, [contenteditable], [data-comment-private], script, style').forEach(el => el.remove());
-  const privateElement = element.closest('[data-comment-private], input, textarea, select, [contenteditable]');
-  const text = privateElement ? undefined : clone.textContent?.replace(/\s+/g, " ").trim().slice(0, 240);
+  const text = visibleText(element);
   const attributes = Object.fromEntries(ATTRIBUTES.flatMap(name => {
     const value = element.getAttribute(name);
     return value ? [[name, value.slice(0, 500)]] : [];
   }));
-  const labelledBy = element.getAttribute("aria-labelledby")?.split(/\s+/).map(id => document.getElementById(id)?.textContent ?? "").join(" ").trim();
+  const labelledBy = element.getAttribute("aria-labelledby")?.split(/\s+/).map(id => visibleText(document.getElementById(id))).filter(Boolean).join(" ").slice(0, MAX_TEXT);
   return {
     selector, selectorKind, tag: element.tagName.toLowerCase(),
     id: element.id || undefined, classes: Array.from(element.classList).slice(0, 20),
-    label: element.getAttribute("data-comment-label") || element.getAttribute("aria-label") || labelledBy || undefined,
+    label: (element.getAttribute("data-comment-label") || element.getAttribute("aria-label") || labelledBy)?.slice(0, MAX_TEXT) || undefined,
     text: text || undefined, attributes,
   };
 }
@@ -85,7 +90,7 @@ export function captureContext(element: Element, anchor: Element): ApostilCaptur
     version: 1, capturedAt: new Date().toISOString(),
     // Keep the route but omit query strings, which can contain credentials.
     url: window.location.origin + window.location.pathname,
-    title: document.title,
+    title: document.title.slice(0, MAX_TEXT),
     viewport: { width: window.innerWidth, height: window.innerHeight, scrollX: window.scrollX, scrollY: window.scrollY },
     element: describeElement(element), anchor: describeElement(anchor), surfaces,
   };
@@ -118,7 +123,7 @@ export function resolveElement(snapshot: ApostilElement, requireVisible = true):
 
 export function findThreadTarget(thread: ApostilThread, requireVisible = true): HTMLElement | null {
   if (thread.context) {
-    if (thread.context.surfaces.some(surface => !resolveElement(surface.element, requireVisible))) return null;
+    if (thread.context.surfaces?.some(surface => !resolveElement(surface.element, requireVisible))) return null;
     return resolveElement(thread.context.anchor, requireVisible);
   }
   if (!thread.targetId) return null;

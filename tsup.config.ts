@@ -14,7 +14,7 @@ export default defineConfig([
     loader: { ".svg": "dataurl" },
     clean: true,
     external: ["react", "react-dom"],
-    banner: (ctx) => ctx.format === "esm" ? { js: '"use client";' } : {},
+    banner: { js: '"use client";' },
   },
   // Server-side (Next.js adapter + CLI)
   {

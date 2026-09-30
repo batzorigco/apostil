@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { captureContext, describeElement, isVisible, SURFACE_SELECTOR } from "../capture";
+import { captureContext, describeElement, SURFACE_SELECTOR } from "../capture";
 import { scrollToThread } from "../thread-navigation";
 import type { ApostilCaptureContext } from "../types";
 import { useApostil } from "../context";
@@ -12,6 +12,8 @@ import { ApostilThreadPopover } from "./comment-thread";
 import { CommentComposer } from "./comment-composer";
 import { UserPrompt } from "./user-prompt";
 import { usePopoverPosition } from "./popover-position";
+import { usePortalHost } from "./viewport-portal";
+import { X } from "../icons";
 
 type PendingPin = {
   x: number;
@@ -198,9 +200,9 @@ export function CommentOverlay() {
 }
 
 function CommentOverlayPortal() {
-  const { threads, pageId, loaded, commentMode, setCommentMode, user, addThread, activeThreadId, setActiveThreadId, sidebarOpen, brandColor } =
+  const { threads, loaded, storageError, commentMode, setCommentMode, user, addThread, activeThreadId, setActiveThreadId, sidebarOpen, setSidebarOpen, brandColor } =
     useApostil();
-  const [portalHost, setPortalHost] = useState<HTMLElement | null>(null);
+  const portalHost = usePortalHost();
   const overlayRef = useRef<HTMLDivElement>(null);
   const [pendingPin, setPendingPin] = useState<PendingPin | null>(null);
   const [pendingPixel, setPendingPixel] = useState<{ left: number; top: number } | null>(null);
@@ -289,19 +291,8 @@ function CommentOverlayPortal() {
     };
   }, [commentMode, user, loaded, pendingPin, handleClick]);
 
-  useEffect(() => {
-    const update = () => {
-      const surfaces = Array.from(document.querySelectorAll('dialog[open], [role="dialog"], [role="alertdialog"], [popover]')).filter(isVisible);
-      setPortalHost(surfaces[surfaces.length - 1] ?? document.body);
-    };
-    update();
-    const observer = new MutationObserver(update);
-    observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["open", "hidden", "data-state", "aria-hidden", "style", "class"] });
-    document.addEventListener("toggle", update, true);
-    return () => { observer.disconnect(); document.removeEventListener("toggle", update, true); };
-  }, []);
-
-  useEffect(() => { setPendingPin(null); setPendingPixel(null); }, [pageId]);
+  // A page change also leaves comment mode, so this covers both.
+  useEffect(() => { if (!commentMode) { setPendingPin(null); setPendingPixel(null); } }, [commentMode]);
 
   const handleNewComment = useCallback(
     (body: string) => {
@@ -320,42 +311,41 @@ function CommentOverlayPortal() {
     [pendingPin, addThread]
   );
 
-  // Open thread from URL hash (e.g. #apostil-threadId)
+  // Open thread from URL hash (e.g. #apostil-threadId), on load and when only the hash changes.
   useEffect(() => {
-    const hash = window.location.hash;
-    debug.log("hash check:", hash, "threads:", threads.length);
-    if (!hash.startsWith("#apostil-")) return;
-    const threadId = hash.replace("#apostil-", "");
-    debug.log("looking for thread:", threadId);
-    // Wait for threads to load before activating
-    if (threads.length === 0) {
-      debug.log("no threads loaded yet, waiting...");
-      return;
-    }
-    const found = threads.find((t) => t.id === threadId);
-    debug.log("found thread:", found ? "yes" : "no");
-    if (found) {
-      setActiveThreadId(threadId);
-      scrollToThread(found);
+    const open = () => {
+      const hash = window.location.hash;
+      debug.log("hash check:", hash, "threads:", threads.length);
+      if (!hash.startsWith("#apostil-")) return;
+      // Threads that have not loaded yet are picked up when this effect reruns.
+      const found = threads.find((t) => t.id === hash.replace("#apostil-", ""));
+      debug.log("found thread:", found ? "yes" : "no");
+      if (!found) return;
+      setActiveThreadId(found.id);
+      // Without its anchor the thread has no pin or popover, so show it in the list instead.
+      if (!scrollToThread(found)) setSidebarOpen(true);
       // Clean hash from URL without triggering navigation
       window.history.replaceState(null, "", window.location.pathname + window.location.search);
-    }
-  }, [threads, setActiveThreadId]);
+    };
+    open();
+    window.addEventListener("hashchange", open);
+    return () => window.removeEventListener("hashchange", open);
+  }, [threads, setActiveThreadId, setSidebarOpen]);
 
   // Keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement)?.tagName;
-      const editing = (e.target as HTMLElement)?.isContentEditable;
+      // The event target is retargeted to the host for inputs inside shadow DOM.
+      const target = e.composedPath()[0] as HTMLElement;
 
       // Escape always works — even when typing
       if (e.key === "Escape") {
         if (pendingPin || activeThreadId || commentMode) { e.preventDefault(); e.stopImmediatePropagation(); }
         if (pendingPin) {
-          setPendingPin(null);
-          setPendingPixel(null);
           setCommentMode(false);
         } else if (activeThreadId) {
+          // The composer about to unmount holds focus; hand it back to the pin it opened from.
+          if (document.activeElement?.closest('[data-apostil-ui="thread"]')) Array.from(overlayRef.current!.querySelectorAll<HTMLElement>("[data-thread]")).find(pin => pin.dataset.thread === activeThreadId)?.focus({ preventScroll: true });
           setActiveThreadId(null);
         } else if (commentMode) {
           setCommentMode(false);
@@ -364,7 +354,7 @@ function CommentOverlayPortal() {
       }
 
       // Other shortcuts only when not typing, and not with modifier keys (Cmd+C, Ctrl+C, etc.)
-      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || editing) return;
+      if (["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName) || target.isContentEditable) return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
 
       if (e.key === "c" || e.key === "C") {
@@ -432,7 +422,7 @@ function CommentOverlayPortal() {
             <div
               className="absolute -translate-x-1/2 -translate-y-1/2 w-7 h-7 rounded-full
                          flex items-center justify-center text-white text-xs font-semibold
-                         shadow-lg ring-2 ring-white ring-offset-2 animate-bounce"
+                         shadow-lg ring-2 ring-white ring-offset-2 animate-bounce motion-reduce:animate-none"
               style={{ backgroundColor: user.color }}
             >
               +
@@ -460,6 +450,9 @@ function CommentOverlayPortal() {
                       {pendingPin.targetLabel}
                     </span>
                   )}
+                  <button type="button" onClick={() => setCommentMode(false)} className="ml-auto p-1 rounded hover:bg-neutral-200 transition-colors" title="Cancel comment" aria-label="Cancel comment">
+                    <X className="w-3.5 h-3.5 text-neutral-500" />
+                  </button>
                 </div>
                 <CommentComposer
                   onSubmit={handleNewComment}
@@ -471,13 +464,13 @@ function CommentOverlayPortal() {
           </div>
         )}
         {/* Comment mode hint */}
-        {commentMode && !pendingPin && !showingUserPrompt && (
-          <div data-apostil-ui="hint" className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[60] pointer-events-none">
+        {commentMode && !pendingPin && !showingUserPrompt && (loaded || storageError) && (
+          <div data-apostil-ui="hint" role="status" className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[60] pointer-events-none">
             <div
               className="text-white text-sm px-4 py-2 rounded-full backdrop-blur-sm"
               style={{ backgroundColor: `color-mix(in oklab, ${brandColor} 80%, transparent)` }}
             >
-              Click to comment · Esc to interact with the page
+              {loaded ? "Click to comment · Esc to interact with the page" : storageError}
             </div>
           </div>
         )}

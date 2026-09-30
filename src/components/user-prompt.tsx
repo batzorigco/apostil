@@ -20,7 +20,7 @@ export function UserPrompt() {
     <div
       data-apostil-ui="user-prompt"
       className="fixed inset-0 flex items-center justify-center bg-black/20 backdrop-blur-[2px]"
-      style={{ zIndex: 99999 }}
+      style={{ zIndex: 2147483646 }}
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
     >

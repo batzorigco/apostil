@@ -7,6 +7,9 @@ import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 
+// These tests check the built package. `npm test` builds first (pretest); a direct vitest run needs a build.
+if (!fs.existsSync(path.join(root, "dist/index.d.ts"))) throw new Error("dist/ is missing. Run `npm run build` (or `npm test`, which builds first) before this file.");
+
 it("keeps the built public API assignable to the published 0.2.0 declarations", () => {
   const fixture = path.join(root, "tests/compatibility-api.tsx");
   const source = `
@@ -49,11 +52,17 @@ it("keeps the built public API assignable to the published 0.2.0 declarations", 
 it("retains every published package entry point and generated target", () => {
   const oldPackage = JSON.parse(fs.readFileSync(path.join(root, "tests/fixtures/apostil-0.2.0/published-manifest.json"), "utf8"));
   const current = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
+  // 0.3.0 nests a `types` under each of import/require so CJS consumers get .d.cts; every 0.2.0 target must stay reachable.
+  const leaves = (value: unknown): string[] => typeof value === "string" ? [value] : Object.values(value as object).flatMap(leaves);
   for (const [entry, targets] of Object.entries(oldPackage.exports)) {
-    expect(current.exports[entry]).toEqual(targets);
-    for (const target of typeof targets === "string" ? [targets] : Object.values(targets as Record<string, string>)) {
+    const now = leaves(current.exports[entry]);
+    for (const target of leaves(targets)) {
+      expect(now, `${entry} -> ${target}`).toContain(target);
       expect(fs.existsSync(path.join(root, target)), target).toBe(true);
     }
   }
-  expect(current.peerDependencies).toEqual(oldPackage.peerDependencies);
+  for (const target of Object.values(current.exports).flatMap(leaves)) expect(fs.existsSync(path.join(root, target)), target).toBe(true);
+  // New peers must be optional, so an upgrade from 0.2.0 needs no extra install.
+  const required = Object.fromEntries(Object.entries(current.peerDependencies).filter(([name]) => !current.peerDependenciesMeta?.[name]?.optional));
+  expect(required).toEqual(oldPackage.peerDependencies);
 });

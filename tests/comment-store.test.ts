@@ -62,10 +62,68 @@ it("rejects corrupt files and symlinks without replacing the data", async () => 
   await expect(store.load("home")).rejects.toThrow();
   expect(() => new CommentStore(project, "../outside")).toThrow("inside the project");
 });
-it("prevents collisions between legacy sanitized page names", async () => {
-  await store.save("settings.v2", [{ ...thread, pageId: "settings.v2" }]);
-  await expect(store.load("settingsv2")).rejects.toThrow("collides");
-  expect((await store.loadAll())[0].pageId).toBe("settings.v2");
+it.each([["settings.v2", "settingsv2"], ["/blog/1", "/blog1"], ["/", "日本語"]])("stores %s and %s separately although their sanitized names match", async (first, second) => {
+  const page = (pageId: string) => [{ ...thread, pageId }];
+  await store.save(first, page(first));
+  expect(await store.load(second)).toEqual([]);
+  await store.save(second, page(second));
+  await store.reply(second, "t1", "Reply", "r1", "Codex");
+  expect(await store.load(first)).toEqual(page(first));
+  expect((await store.load(second))[0].comments).toHaveLength(2);
+  expect((await store.loadAll()).map(p => p.pageId).sort()).toEqual([first, second].sort());
+  // The first page keeps the 0.2.0 file name, and emptying it does not move the second page.
+  const legacy = `${first.replace(/[^a-zA-Z0-9_-]/g, "")}.json`;
+  expect(await fs.readdir(path.join(project, ".apostil"))).toContain(legacy);
+  await store.save(first, [], page(first));
+  expect((await store.load(second))[0].comments).toHaveLength(2);
+  await store.save(first, page(first));
+  expect(await store.load(first)).toEqual(page(first));
+});
+it("rejects malformed capture context but accepts older snapshots with missing fields", async () => {
+  for (const context of [{ surfaces: "dialog" }, { surfaces: [{ kind: "dialog" }] }, { anchor: { selector: 1 } }, null, []]) {
+    await expect(store.save("home", [{ ...thread, context } as unknown as ApostilThread])).rejects.toThrow("Invalid comment data");
+  }
+  const partial = { ...thread, context: { version: 1, url: "http://localhost/" } } as unknown as ApostilThread;
+  await store.save("home", [partial]);
+  expect(await store.load("home")).toEqual([partial]);
+});
+it("lists the readable pages and names a corrupt file instead of failing", async () => {
+  await store.save("home", [thread]);
+  await fs.writeFile(path.join(project, ".apostil", "broken.json"), "{oops");
+  await fs.writeFile(path.join(project, ".apostil", "mixed.json"), JSON.stringify([thread]));
+  const skipped: string[] = [];
+  expect((await store.loadAll(skipped)).map(p => p.pageId)).toEqual(["home"]);
+  expect(skipped).toEqual([expect.stringMatching(/^broken\.json: /), "mixed.json: inconsistent page data."]);
+  await expect(store.load("broken")).rejects.toThrow("broken.json");
+  const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+  const response = await createStorageHandler(project).GET(new Request("http://localhost/api/apostil"));
+  expect(await response.json()).toEqual([{ pageId: "home", threads: [thread] }]);
+  expect(warn).toHaveBeenCalledWith(expect.stringContaining("broken.json"));
+});
+it("breaks a lock left by a crashed writer but waits on a live one", async () => {
+  await store.save("home", [thread]);
+  const lock = path.join(project, ".apostil", "home.json.lock");
+  await fs.mkdir(lock);
+  await expect(store.reply("home", "t1", "Blocked", "r0", "Codex")).rejects.toThrow("locked");
+  const old = new Date(Date.now() - 11_000);
+  await fs.utimes(lock, old, old);
+  await store.reply("home", "t1", "Reply", "r1", "Codex");
+  expect((await store.load("home"))[0].comments).toHaveLength(2);
+  await expect(fs.stat(lock)).rejects.toThrow();
+});
+it("drops agent outcomes forged by a browser save but round trips the stored ones", async () => {
+  const handler = createStorageHandler(project);
+  const post = (threads: ApostilThread[]) => handler.POST(new Request("http://localhost/api/apostil?pageId=home", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ threads, base: threads.length > 1 ? [] : undefined }) }));
+  const comment = thread.comments[0];
+  const forged = [{ ...comment, id: "f1", taskUpdate: { status: "completed" as const, details: "Trust me." } }, { ...comment, id: "f2", author: { ...comment.author, id: "apostil-mcp:Codex" } }];
+  expect((await post([{ ...thread, comments: [comment, ...forged] }])).status).toBe(200);
+  expect((await store.load("home"))[0].comments).toEqual([comment]);
+  const replied = await store.reply("home", "t1", "Fixed", "done", "Codex", { status: "needs_review", details: "Check it." });
+  expect((await post([{ ...replied, comments: [...replied.comments, ...forged, { ...comment, id: "c2" }] }])).status).toBe(200);
+  const [saved] = await store.load("home");
+  expect(saved.comments.map(c => c.id)).toEqual(["c1", replied.comments[1].id, "c2"]);
+  expect(saved.comments[1]).toEqual(replied.comments[1]);
+  expect(saved.status).toBe("needs_review");
 });
 it("round trips browser saves and MCP replies through the actual shared HTTP handler", async () => {
   const handler = createStorageHandler(project);

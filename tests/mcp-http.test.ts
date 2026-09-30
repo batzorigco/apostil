@@ -90,3 +90,21 @@ it("posts an agent outcome and requests review atomically through the connected 
   expect(saved.comments[0]).toMatchObject({ body: args.body, taskUpdate: { status: "needs_review", details: args.reviewInstructions } });
   expect((await client.callTool({ name: "get_comment_context", arguments: { pageId: "home", threadId: "review" } })).structuredContent).toMatchObject({ status: "needs_review", capabilities: { canUpdateStatus: true } });
 });
+
+it("evicts the least recently used session instead of refusing clients that never close theirs", async () => {
+  const server = await startHTTPMCP({ project, port: 0, author: "Pair", readOnly: true });
+  cleanup.push(() => server.close());
+  const connect = async (name: string) => {
+    const client = new Client({ name, version: "1" });
+    await client.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${server.port}/mcp`)));
+    return client;
+  };
+  const first = await connect("first"), second = await connect("second");
+  // The connection's own options apply over HTTP too.
+  expect((await second.listTools()).tools.map(t => t.name)).toEqual(["list_comments", "get_comment_context"]);
+  for (let i = 0; i < 31; i++) await connect(`extra-${i}`);
+  expect(server.clients()).toHaveLength(32);
+  expect(server.clients().map(c => c.name)).not.toContain("first");
+  await expect(first.listTools()).rejects.toThrow();
+  expect((await second.listTools()).tools).toHaveLength(2);
+});

@@ -57,6 +57,15 @@ describe("comment snapshots", () => {
     expect(JSON.stringify(context)).not.toContain("secret");
   });
 
+  it("bounds aria-labelledby text and keeps private content out of labels", () => {
+    document.body.innerHTML = `<h2 id="title">Billing <span data-comment-private>4242 4242</span><input value="secret"></h2><p id="private" data-comment-private>Jane Doe</p><p id="long">${"x".repeat(1000)}</p><section id="card" aria-labelledby="title private missing long"></section>`;
+    const { label } = describeElement(document.querySelector("#card")!);
+    expect(label).toMatch(/^Billing x+$/);
+    expect(label).toHaveLength(240);
+    document.title = "t".repeat(1000);
+    expect(captureContext(document.body, document.body).title).toHaveLength(240);
+  });
+
   it("prioritizes legacy manual anchors over matching tag names", () => {
     document.body.innerHTML = '<section></section><div data-comment-target="section">Target</div>';
     const saved = { ...thread(document.querySelector("div")!), context: undefined, targetId: "section" };

@@ -9,16 +9,32 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      id-token: write # lets npm sign a provenance statement for this build
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           registry-url: https://registry.npmjs.org
+      - name: Release tag must be "v" + package.json version
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          VERSION="v$(node -p "require('./package.json').version")"
+          if [ "$TAG" != "$VERSION" ]; then
+            echo "::error::Release tag $TAG does not match package.json version $VERSION"
+            exit 1
+          fi
       - run: npm ci
-      - run: npm run build
-      - run: npm test
-      - run: npm publish
+      - run: npm run typecheck
+      - run: npm test # builds dist/ first via "pretest"
+      # Prereleases (the "Set as a pre-release" box) go to the "next" dist-tag so `npm install apostil` keeps the stable version.
+      - run: npm publish --provenance --access public --tag ${{ github.event.release.prerelease && 'next' || 'latest' }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      # To switch to npm trusted publishing (no long-lived token): on npmjs.com open the apostil
+      # package > Settings > Trusted Publisher, add GitHub Actions with repository
+      # batzorigco/apostil and workflow file publish.yml. Then add `- run: npm install -g npm@latest`
+      # before the publish step (trusted publishing needs npm >= 11.5.1), delete the `env:` block
+      # above and the NPM_TOKEN secret. `id-token: write` must stay; `--provenance` becomes automatic.

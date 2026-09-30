@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, it, expect, vi } from "vitest";
-import { render, screen, fireEvent, waitFor, cleanup } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, cleanup, within } from "@testing-library/react";
 import { ApostilProvider, useApostil } from "../src/context";
 import { CommentOverlay } from "../src/components/comment-overlay";
 import { CommentSidebar } from "../src/components/comment-sidebar";
@@ -228,4 +228,160 @@ it("puts a thread back and keeps the reason when storage rejects its deletion", 
   expect(screen.getByText("This thread changed since you loaded it.")).toBeTruthy();
   fireEvent.click(screen.getByText("Reply"));
   await waitFor(() => expect(screen.queryByText("This thread changed since you loaded it.")).toBeNull());
+});
+
+const author = { id: "u", name: "Reviewer", color: "red" };
+const footerThread: ApostilThread = { id: "t1", pageId: "home", targetId: "#footer", targetLabel: "Footer", pinX: 50, pinY: 20, resolved: false, createdAt: "2026-01-01", comments: [{ id: "c1", threadId: "t1", author, body: "Adjust footer spacing", createdAt: "2026-01-01" }] };
+const memory = (threads: ApostilThread[]): ApostilStorage => ({ load: async () => threads, save: async () => {} });
+function ForceComment() {
+  const api = useApostil();
+  return <button data-apostil-ui onClick={() => { api.setUser("Alice"); api.setCommentMode(true); }}>Force comment</button>;
+}
+
+it("keeps a reply draft and its thread open while the pin's anchor is out of view", async () => {
+  render(<ApostilProvider pageId="home" storage={memory([footerThread])}><Controls /><footer id="footer">Page footer</footer><CommentOverlay /></ApostilProvider>);
+  const pin = await screen.findByRole("button", { name: "Open comment 1" });
+  fireEvent.click(screen.getByText("Comment"));
+  fireEvent.click(pin);
+  fireEvent.change(await screen.findByPlaceholderText("Reply..."), { target: { value: "Half-written reply" } });
+  const footer = document.querySelector("footer")!;
+  footer.hidden = true;
+  await waitFor(() => expect(screen.queryByRole("button", { name: "Open comment 1" })).toBeNull());
+  expect((screen.getByPlaceholderText("Reply...") as HTMLTextAreaElement).value).toBe("Half-written reply");
+  expect(screen.getByRole("dialog", { name: "Comment thread on Footer" }).style.visibility).toBe("visible");
+  footer.hidden = false;
+  await screen.findByRole("button", { name: "Open comment 1" });
+  expect((screen.getByPlaceholderText("Reply...") as HTMLTextAreaElement).value).toBe("Half-written reply");
+});
+
+it("pulls agent updates when the window regains focus, without re-saving or reporting a flaky pull", async () => {
+  let remote = [footerThread];
+  let offline = false;
+  const load = vi.fn(async () => { if (offline) throw new Error("Offline"); return remote; });
+  const save = vi.fn(async (_page: string, _threads: ApostilThread[]) => {});
+  function State() {
+    const { threads, storageError } = useApostil();
+    return <p>{threads[0]?.comments.length} comments, error {storageError ?? "none"}</p>;
+  }
+  render(<ApostilProvider pageId="home" storage={{ load, save }}><State /></ApostilProvider>);
+  await screen.findByText("1 comments, error none");
+  await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+  fireEvent.focus(window);
+  await waitFor(() => expect(load).toHaveBeenCalledTimes(2));
+  expect(save).toHaveBeenCalledTimes(1);
+  remote = [{ ...footerThread, status: "needs_review", comments: [...footerThread.comments, { id: "agent", threadId: "t1", author: { id: "ai", name: "Claude", color: "black" }, body: "Done", createdAt: "2026-01-02" }] }];
+  fireEvent(document, new Event("visibilitychange"));
+  await screen.findByText("2 comments, error none");
+  await waitFor(() => expect(save).toHaveBeenLastCalledWith("home", remote));
+  offline = true;
+  fireEvent.focus(window);
+  await waitFor(() => expect(load).toHaveBeenCalledTimes(4));
+  expect(screen.getByText("2 comments, error none")).toBeTruthy();
+});
+
+it("shows the storage error instead of the click hint after a failed load, and does not poll", async () => {
+  const load = vi.fn(async () => { throw new Error("Storage is down."); });
+  render(<ApostilProvider pageId="home" storage={{ load, save: async () => {} }}><ForceComment /><main id="page">Page</main><CommentOverlay /></ApostilProvider>);
+  await waitFor(() => expect(load).toHaveBeenCalledTimes(1));
+  fireEvent.click(screen.getByText("Force comment"));
+  expect((await screen.findByRole("status")).textContent).toBe("Storage is down.");
+  expect(screen.queryByText("Click to comment · Esc to interact with the page")).toBeNull();
+  fireEvent.focus(window);
+  await new Promise(resolve => setTimeout(resolve, 0));
+  expect(load).toHaveBeenCalledTimes(1);
+});
+
+it("clears a pending pin when comment mode is toggled off or the composer is cancelled", async () => {
+  render(<ApostilProvider pageId="home" storage={memory([])}><Controls /><button id="target">Climate</button><CommentOverlay /><CommentToggle /></ApostilProvider>);
+  await waitFor(() => expect((screen.getByText("Comment") as HTMLButtonElement).disabled).toBe(false));
+  fireEvent.click(screen.getByText("Comment"));
+  fireEvent.pointerDown(screen.getByText("Climate"), { clientX: 10, clientY: 10 });
+  expect(screen.getByPlaceholderText("What's on your mind?")).toBeTruthy();
+  fireEvent.click(screen.getByTitle("Exit comment mode"));
+  expect(screen.queryByPlaceholderText("What's on your mind?")).toBeNull();
+  expect(screen.queryByText("+")).toBeNull();
+  fireEvent.click(screen.getByTitle("Add comment"));
+  fireEvent.pointerDown(screen.getByText("Climate"), { clientX: 10, clientY: 10 });
+  fireEvent.click(screen.getByRole("button", { name: "Cancel comment" }));
+  expect(screen.queryByPlaceholderText("What's on your mind?")).toBeNull();
+  expect(screen.getByTitle("Add comment")).toBeTruthy();
+});
+
+it("moves the sidebar and toggle into a modal host dialog and back, above the pins when asking for a name", async () => {
+  const matches = Element.prototype.matches;
+  vi.spyOn(Element.prototype, "matches").mockImplementation(function (this: Element, selector: string) { return selector === ":modal" ? this.hasAttribute("open") : matches.call(this, selector); });
+  render(<ApostilProvider pageId="home" storage={memory([footerThread])}><dialog id="host"><p id="footer">In dialog</p></dialog><CommentOverlay /><CommentSidebar /><CommentToggle /></ApostilProvider>);
+  const dialog = document.getElementById("host")!;
+  const parents = () => ["controls", "sidebar", "overlay"].map(name => document.querySelector(`[data-apostil-ui="${name}"]`)?.parentElement);
+  await waitFor(() => expect(parents()).toEqual([document.body, document.body, document.body]));
+  dialog.setAttribute("open", "");
+  await waitFor(() => expect(parents()).toEqual([dialog, dialog, dialog]));
+  const pin = await screen.findByRole("button", { name: "Open comment 1" });
+  fireEvent.focus(pin);
+  expect(dialog.contains(await screen.findByRole("tooltip"))).toBe(true);
+  dialog.removeAttribute("open");
+  await waitFor(() => expect(parents()).toEqual([document.body, document.body, document.body]));
+  fireEvent.click(screen.getByTitle("Add comment"));
+  const prompt = screen.getByText("What's your name?").closest<HTMLElement>('[data-apostil-ui="user-prompt"]')!;
+  for (const name of ["controls", "sidebar", "overlay"]) expect(Number(prompt.style.zIndex)).toBeGreaterThan(Number(document.querySelector<HTMLElement>(`[data-apostil-ui="${name}"]`)!.style.zIndex));
+});
+
+it("opens a hash-linked thread on hashchange, in the sidebar when its anchor is gone", async () => {
+  render(<ApostilProvider pageId="home" storage={memory([{ ...footerThread, targetId: "#missing" }])}><Controls /><CommentOverlay /><CommentSidebar /></ApostilProvider>);
+  await waitFor(() => expect((screen.getByText("Comment") as HTMLButtonElement).disabled).toBe(false));
+  const sidebar = document.querySelector('[data-apostil-ui="sidebar"]')!;
+  expect(sidebar.hasAttribute("hidden")).toBe(true);
+  window.location.hash = "#apostil-t1";
+  await waitFor(() => expect(sidebar.hasAttribute("hidden")).toBe(false));
+  expect(screen.getByRole("article", { name: "Comment by Reviewer" }).className).toContain("is-expanded");
+  expect(window.location.hash).toBe("");
+});
+
+it("labels the thread and sidebar, returns focus on Escape, and closes the task menu from outside", async () => {
+  const loadAll = async () => [{ pageId: "my-post", threads: [{ ...footerThread, id: "t2", pageId: "my-post" }] }];
+  render(<ApostilProvider pageId="home" storage={{ ...memory([footerThread]), loadAll }}><Controls /><footer id="footer">Page footer</footer><CommentOverlay /><CommentSidebar /></ApostilProvider>);
+  const pin = await screen.findByRole("button", { name: "Open comment 1" });
+  fireEvent.click(screen.getByText("Comment"));
+  fireEvent.keyDown(document.body, { key: "Escape" });
+  fireEvent.click(pin);
+  const reply = within(await screen.findByRole("dialog", { name: "Comment thread on Footer" })).getByPlaceholderText("Reply...");
+  reply.focus();
+  fireEvent.keyDown(reply, { key: "Escape" });
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(document.activeElement).toBe(pin);
+  expect((await screen.findByRole("tooltip")).textContent).toBe("Footer");
+
+  fireEvent.click(screen.getByText("List"));
+  const sidebar = screen.getByRole("complementary", { name: "Comments" });
+  expect(document.activeElement).toBe(sidebar);
+  const menu = sidebar.querySelector<HTMLDetailsElement>(".apostil-thread-actions")!;
+  menu.open = true;
+  fireEvent.pointerDown(screen.getByText("Adjust footer spacing"));
+  expect(menu.open).toBe(false);
+  menu.open = true;
+  fireEvent.keyDown(sidebar, { key: "Escape" });
+  expect(menu.open).toBe(false);
+  expect(sidebar.hasAttribute("hidden")).toBe(false);
+  expect(document.activeElement).toBe(menu.querySelector("summary"));
+  expect(screen.getByRole("tab", { name: /This Page/ }).getAttribute("aria-selected")).toBe("true");
+  fireEvent.keyDown(screen.getByRole("tablist"), { key: "ArrowRight" });
+  const all = screen.getByRole("tab", { name: "All Pages" });
+  expect(all.getAttribute("aria-selected")).toBe("true");
+  expect(document.activeElement).toBe(all);
+  expect(await screen.findByRole("button", { name: "my-post" })).toBeTruthy();
+  fireEvent.keyDown(all, { key: "Escape" });
+  expect(sidebar.hasAttribute("hidden")).toBe(true);
+});
+
+it("watches the page with one observer however many pins there are, and reads shortcut keys through shadow DOM", async () => {
+  const observe = vi.spyOn(MutationObserver.prototype, "observe");
+  const threads = ["a", "b", "c"].map(id => ({ ...footerThread, id }));
+  render(<ApostilProvider pageId="home" storage={memory(threads)}><footer id="footer">Page footer</footer><div id="shadow" /><CommentOverlay /><CommentToggle /></ApostilProvider>);
+  await screen.findByRole("button", { name: "Open comment 3" });
+  expect(observe.mock.calls.filter(([, options]) => options?.attributeFilter?.includes("data-state"))).toHaveLength(1);
+  const input = document.getElementById("shadow")!.attachShadow({ mode: "open" }).appendChild(document.createElement("input"));
+  fireEvent.keyDown(input, { key: "c", composed: true });
+  expect(screen.getByTitle("Add comment")).toBeTruthy();
+  fireEvent.keyDown(document.body, { key: "c" });
+  expect(screen.getByTitle("Exit comment mode")).toBeTruthy();
 });

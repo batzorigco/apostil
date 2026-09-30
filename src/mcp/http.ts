@@ -4,6 +4,8 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import { createApostilMCPServer, type MCPOptions } from "./server";
 
+const MAX_SESSIONS = 32;
+
 /** Local native MCP clients only. Browser control lives on the app's same-origin route. */
 export async function startHTTPMCP(options: MCPOptions & { port: number }) {
   type Session = { transport: StreamableHTTPServerTransport; server: ReturnType<typeof createApostilMCPServer>; name?: string; lastSeen: number };
@@ -35,7 +37,11 @@ export async function startHTTPMCP(options: MCPOptions & { port: number }) {
       if (!session) {
         if (id) { res.writeHead(404).end(); return; }
         if (req.method !== "POST" || !isInitializeRequest(body)) { res.writeHead(400).end(); return; }
-        if (sessions.size >= 32) { res.writeHead(503).end(); return; }
+        // Clients that reconnect without DELETE leave sessions behind; drop the least recently used instead of refusing new ones.
+        if (sessions.size >= MAX_SESSIONS) {
+          const [oldest, stale] = [...sessions].reduce((a, b) => b[1].lastSeen < a[1].lastSeen ? b : a);
+          sessions.delete(oldest); void stale.server.close();
+        }
         const server = createApostilMCPServer(options);
         const transport = new StreamableHTTPServerTransport({
           sessionIdGenerator: randomUUID, enableJsonResponse: true,

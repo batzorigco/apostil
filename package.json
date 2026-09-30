@@ -1,7 +1,7 @@
 {
   "name": "apostil",
-  "version": "0.2.0",
-  "description": "Lightweight, Figma-like commenting for React & Next.js \u2014 pin comments directly on your UI",
+  "version": "0.3.0",
+  "description": "Lightweight, Figma-like commenting for React & Next.js — pin comments directly on your UI",
   "license": "MIT",
   "author": "Batzorigco",
   "repository": {
@@ -29,45 +29,82 @@
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "require": "./dist/index.cjs"
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
     },
     "./adapters/localStorage": {
-      "types": "./dist/adapters/localStorage.d.ts",
-      "import": "./dist/adapters/localStorage.js",
-      "require": "./dist/adapters/localStorage.cjs"
+      "import": {
+        "types": "./dist/adapters/localStorage.d.ts",
+        "default": "./dist/adapters/localStorage.js"
+      },
+      "require": {
+        "types": "./dist/adapters/localStorage.d.cts",
+        "default": "./dist/adapters/localStorage.cjs"
+      }
     },
     "./adapters/rest": {
-      "types": "./dist/adapters/rest.d.ts",
-      "import": "./dist/adapters/rest.js",
-      "require": "./dist/adapters/rest.cjs"
+      "import": {
+        "types": "./dist/adapters/rest.d.ts",
+        "default": "./dist/adapters/rest.js"
+      },
+      "require": {
+        "types": "./dist/adapters/rest.d.cts",
+        "default": "./dist/adapters/rest.cjs"
+      }
     },
     "./adapters/nextjs": {
-      "types": "./dist/adapters/nextjs.d.ts",
-      "import": "./dist/adapters/nextjs.js",
-      "require": "./dist/adapters/nextjs.cjs"
+      "import": {
+        "types": "./dist/adapters/nextjs.d.ts",
+        "default": "./dist/adapters/nextjs.js"
+      },
+      "require": {
+        "types": "./dist/adapters/nextjs.d.cts",
+        "default": "./dist/adapters/nextjs.cjs"
+      }
+    },
+    "./adapters/vite": {
+      "import": {
+        "types": "./dist/adapters/vite.d.ts",
+        "default": "./dist/adapters/vite.js"
+      },
+      "require": {
+        "types": "./dist/adapters/vite.d.cts",
+        "default": "./dist/adapters/vite.cjs"
+      }
     },
     "./styles.css": "./dist/styles.css",
-    "./adapters/vite": {
-      "types": "./dist/adapters/vite.d.ts",
-      "import": "./dist/adapters/vite.js",
-      "require": "./dist/adapters/vite.cjs"
-    }
+    "./package.json": "./package.json"
   },
+  "sideEffects": [
+    "**/*.css",
+    "./dist/index.js",
+    "./dist/index.cjs"
+  ],
   "bin": {
     "apostil": "./bin/apostil.js"
   },
   "files": [
     "dist",
+    "!dist/cli/index.cjs",
+    "!dist/cli/index.cjs.map",
+    "!dist/cli/index.d.ts",
+    "!dist/cli/index.d.cts",
     "bin",
     "README.md",
-    "docs/upgrading-from-0.2.0.md",
-    "LICENSE"
+    "docs",
+    "LICENSE",
+    "CHANGELOG.md"
   ],
   "scripts": {
     "build": "tsup && npx @tailwindcss/cli -i src/styles/apostil.css -o dist/styles.css --minify",
     "dev": "tsup --watch",
+    "pretest": "npm run build",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:compat": "npm run build && vitest run tests/compatibility",
@@ -76,12 +113,16 @@
   },
   "peerDependencies": {
     "react": ">=18",
-    "react-dom": ">=18"
+    "react-dom": ">=18",
+    "@modelcontextprotocol/sdk": "^1.30.1",
+    "smol-toml": "^1.9.0",
+    "zod": "^3.25.76"
   },
   "engines": {
-    "node": ">=18.17"
+    "node": ">=20"
   },
   "devDependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.1",
     "@tailwindcss/cli": "^4.2.2",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
@@ -91,14 +132,22 @@
     "jsdom": "^29.0.1",
     "react": "^19",
     "react-dom": "^19",
+    "smol-toml": "^1.9.0",
     "tailwindcss": "^4.2.2",
     "tsup": "^8",
     "typescript": "^5",
-    "vitest": "^4.1.2"
-  },
-  "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.30.1",
-    "smol-toml": "^1.9.0",
+    "vitest": "^4.1.2",
     "zod": "^3.25.76"
+  },
+  "peerDependenciesMeta": {
+    "@modelcontextprotocol/sdk": {
+      "optional": true
+    },
+    "smol-toml": {
+      "optional": true
+    },
+    "zod": {
+      "optional": true
+    }
   }
 }

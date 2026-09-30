@@ -7,6 +7,7 @@ import { useApostil } from "../context";
 import type { ApostilThread } from "../types";
 
 import { findThreadTarget } from "../capture";
+import { onLayoutChange, scheduleLayout } from "./viewport-portal";
 
 export function resolvePosition(thread: ApostilThread, overlayEl: HTMLElement | null): { left: number; top: number } | null {
   if (!overlayEl) return null;
@@ -36,32 +37,22 @@ export function resolvePosition(thread: ApostilThread, overlayEl: HTMLElement | 
   return { left: thread.pinX / 100 * overlay.width, top: thread.pinY / 100 * overlay.height };
 }
 
-export function usePinPosition(thread: ApostilThread, overlayRef: RefObject<HTMLDivElement | null>, enabled = true) {
+/** `hold` keeps the last position while the anchor is out of view, so an open thread outlives its pin. */
+export function usePinPosition(thread: ApostilThread, overlayRef: RefObject<HTMLDivElement | null>, enabled = true, hold = false) {
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
   useEffect(() => {
-    if (!enabled) return;
-    let frame = 0;
+    if (!enabled) { setPos(null); return; }
     const update = () => {
       const next = resolvePosition(thread, overlayRef.current);
-      setPos(previous => previous?.left === next?.left && previous?.top === next?.top ? previous : next);
+      setPos(previous => (hold && !next) || (previous?.left === next?.left && previous?.top === next?.top) ? previous : next);
     };
-    const schedule = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(update); };
     update();
-    const observer = new MutationObserver(schedule);
-    observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["class", "style", "open", "hidden", "data-state", "aria-hidden"] });
-    const resize = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(schedule);
+    const resize = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(scheduleLayout);
     const target = findThreadTarget(thread);
     if (target) resize?.observe(target);
-    window.addEventListener("resize", schedule);
-    document.addEventListener("scroll", schedule, true);
-    document.addEventListener("toggle", schedule, true);
-    return () => {
-      cancelAnimationFrame(frame); observer.disconnect(); resize?.disconnect();
-      window.removeEventListener("resize", schedule);
-      document.removeEventListener("scroll", schedule, true);
-      document.removeEventListener("toggle", schedule, true);
-    };
-  }, [thread, overlayRef, enabled]);
+    const stop = onLayoutChange(update);
+    return () => { resize?.disconnect(); stop(); };
+  }, [thread, overlayRef, enabled, hold]);
   return pos;
 }
 
@@ -72,11 +63,13 @@ function PinButton({
   index,
   isActive,
   onClick,
+  overlayRef,
 }: {
   thread: ApostilThread;
   index: number;
   isActive: boolean;
   onClick: (e: React.MouseEvent) => void;
+  overlayRef: RefObject<HTMLDivElement | null>;
 }) {
   const authorColor = thread.comments[0]?.author.color ?? "#df461c";
   const needsReview = getTaskStatus(thread) === "needs_review";
@@ -91,11 +84,12 @@ function PinButton({
       return;
     }
     const rect = buttonRef.current.getBoundingClientRect();
+    const origin = overlayRef.current!.getBoundingClientRect();
     setTooltipPos({
-      left: rect.left + rect.width / 2,
-      top: rect.bottom + 4,
+      left: rect.left + rect.width / 2 - origin.left,
+      top: rect.bottom + 4 - origin.top,
     });
-  }, [hovered]);
+  }, [hovered, overlayRef]);
 
   return (
     <>
@@ -104,10 +98,13 @@ function PinButton({
         aria-label={`Open comment ${index + 1}${needsReview ? " — Needs review" : ""}`}
         title={needsReview ? "Needs review — check the agent’s changes" : undefined}
         data-status={getTaskStatus(thread)}
+        data-thread={thread.id}
         ref={buttonRef}
         onClick={onClick}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
+        onFocus={() => setHovered(true)}
+        onBlur={() => setHovered(false)}
         style={{ position: "relative" }}
       >
         <div
@@ -125,24 +122,26 @@ function PinButton({
         </div>
         {!thread.resolved && !isActive && !needsReview && (
           <div
-            className="absolute inset-0 rounded-full animate-ping opacity-20"
+            className="absolute inset-0 rounded-full animate-ping motion-reduce:animate-none opacity-20"
             style={{ backgroundColor: pinColor }}
           />
         )}
       </button>
       {(thread.targetLabel || needsReview) && hovered && tooltipPos && createPortal(
         <div
-          className="fixed whitespace-nowrap text-[10px] bg-neutral-800 text-white px-1.5 py-0.5 rounded pointer-events-none"
+          role="tooltip"
+          className="absolute whitespace-nowrap text-[10px] bg-neutral-800 text-white px-1.5 py-0.5 rounded pointer-events-none"
           style={{
             left: tooltipPos.left,
             top: tooltipPos.top,
             transform: "translateX(-50%)",
-            zIndex: 999999,
+            zIndex: 65,
           }}
         >
           {[thread.targetLabel, needsReview ? "Needs review" : null].filter(Boolean).join(" · ")}
         </div>,
-        document.body
+        // Inside the overlay the label follows it into a modal dialog, where anything left on the body is inert.
+        overlayRef.current!
       )}
     </>
   );
@@ -157,7 +156,7 @@ export function CommentPin({ thread, index, overlayRef }: {
   return <div data-apostil-ui="pin" className="absolute pointer-events-auto"
     style={{ left: pos.left, top: pos.top, transform: "translate(-50%, -50%)", zIndex: 60 }}
     onPointerDown={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
-    <PinButton thread={thread} index={index} isActive={activeThreadId === thread.id} onClick={e => {
+    <PinButton thread={thread} index={index} overlayRef={overlayRef} isActive={activeThreadId === thread.id} onClick={e => {
       e.preventDefault(); e.stopPropagation(); setActiveThreadId(activeThreadId === thread.id ? null : thread.id);
     }} />
   </div>;

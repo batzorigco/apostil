@@ -12,6 +12,7 @@ export function MCPSettings({ endpoint }: { endpoint?: string }) {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [available, setAvailable] = useState(false);
+  const [setup, setSetup] = useState("");
   const local = typeof window !== "undefined" && ["localhost", "127.0.0.1", "[::1]"].includes(window.location.hostname);
   const url = local && endpoint ? new URL(endpoint, window.location.href) : undefined;
   const safeEndpoint = local && url?.origin === window.location.origin ? url?.href : undefined;
@@ -24,6 +25,8 @@ export function MCPSettings({ endpoint }: { endpoint?: string }) {
       try {
         const response = await fetch(safeEndpoint, { headers: { "X-Apostil-MCP": "1" }, cache: "no-store", signal: abort.signal });
         if (response.status === 404 || response.status === 403) { setAvailable(false); return; }
+        // 501: the optional MCP packages are not installed; the server says which command adds them.
+        if (response.status === 501) { setSetup((await response.json()).error); setAvailable(false); return; }
         if (!response.ok) throw new Error("Could not reach the MCP controls.");
         const next: Status = await response.json();
         if (typeof next.running !== "boolean" || !Array.isArray(next.clients)) { setAvailable(false); return; }
@@ -55,7 +58,7 @@ export function MCPSettings({ endpoint }: { endpoint?: string }) {
       <span className="flex items-center gap-2"><span className={`h-1.5 w-1.5 rounded-full ${available && status?.running ? "bg-green-500" : "bg-neutral-300"}`} />{!available ? "Setup" : status?.running ? "Running" : "Stopped"}<span aria-hidden="true">{expanded ? "−" : "+"}</span></span>
     </button>
     {expanded && <div className="px-4 pb-4 space-y-3" style={{ maxHeight: "50vh", overflowY: "auto" }}>
-      {!available ? <p>{endpoint ? "MCP controls are unavailable. Run the updated Next.js or Vite storage adapter in local development." : "MCP needs shared file storage. Use the Next.js adapter, or the Vite storage plugin with the REST adapter."}</p> : <>
+      {!available ? <p>{setup || (endpoint ? "MCP controls are unavailable. Run the updated Next.js or Vite storage adapter in local development." : "MCP needs shared file storage. Use the Next.js adapter, or the Vite storage plugin with the REST adapter.")}</p> : <>
         <div className="flex items-end gap-2">
           <label className="flex-1">Port<input aria-label="MCP port" type="number" min={1024} max={65535} value={port} disabled={busy || status?.running} onChange={e => setPort(e.target.value)} className="mt-1 w-full rounded border border-neutral-200 px-2 py-1.5 text-neutral-900 disabled:opacity-50" /></label>
           <button type="button" disabled={busy} onClick={() => void act(status?.running ? "stop" : "start")} className={button} style={{ font: "inherit", background: "white", borderStyle: "solid", cursor: "pointer" }}>{busy ? "Working…" : status?.running ? "Stop MCP" : "Start MCP"}</button>

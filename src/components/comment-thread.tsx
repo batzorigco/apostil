@@ -32,7 +32,7 @@ export function ApostilThreadPopover({
   const ref = useRef<HTMLDivElement>(null);
   const isOpen = activeThreadId === thread.id;
 
-  const pos = usePinPosition(thread, overlayRef, isOpen);
+  const pos = usePinPosition(thread, overlayRef, isOpen, true);
   const placement = usePopoverPosition(pos, overlayRef, ref, isOpen, sidebarOpen);
 
   useEffect(() => {
@@ -55,6 +55,8 @@ export function ApostilThreadPopover({
   return (
     <div
       data-apostil-ui="thread"
+      role="dialog"
+      aria-label={`Comment thread${thread.targetLabel ? ` on ${thread.targetLabel}` : ""}`}
       onPointerDown={e => e.stopPropagation()}
       onMouseDown={e => e.stopPropagation()}
       ref={ref}

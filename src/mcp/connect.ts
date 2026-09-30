@@ -6,7 +6,6 @@ import { parse as parseToml } from "smol-toml";
 export type ConnectionOptions = {
   project: string;
   client: "claude" | "codex";
-  cliPath?: string;
   url?: string;
   updateGenerated?: boolean;
   directory?: string;
@@ -17,9 +16,11 @@ export type ConnectionOptions = {
 /** Project-scoped only: preserve existing servers and never change trust/approval settings. */
 export async function connectProject(options: ConnectionOptions) {
   const project = await fs.realpath(options.project);
-  const command = process.execPath;
+  // The entry is shared with a team and must survive Node upgrades and the npx cache, so it holds no absolute path.
+  // Both clients start project servers from the project root, which `apostil mcp` uses as its default project.
+  const command = "npx";
   if (options.url && !/^http:\/\/127\.0\.0\.1:\d+\/mcp$/.test(options.url)) throw new Error("Expected a localhost MCP URL.");
-  const args = options.url ? [] : [await fs.realpath(options.cliPath!), "mcp", "--project", project, "--author", options.client === "codex" ? "Codex" : "Claude"];
+  const args = options.url ? [] : ["-y", "apostil", "mcp", "--author", options.client === "codex" ? "Codex" : "Claude"];
   if (options.directory) args.push("--directory", options.directory);
   if (options.readOnly) args.push("--read-only");
   const filename = options.client === "claude" ? path.join(project, ".mcp.json") : path.join(project, ".codex", "config.toml");
@@ -33,11 +34,14 @@ export async function connectProject(options: ConnectionOptions) {
     original = await fs.readFile(filename, "utf8");
   } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
   const conflict = () => new Error("An Apostil MCP entry already exists with custom settings. Review or remove that entry before reconnecting.");
-  const canUpdate = (entry: Record<string, any>) => options.url && options.updateGenerated && (
-    Object.keys(entry).every(k => ["type", "url"].includes(k)) && /^http:\/\/127\.0\.0\.1:\d+\/mcp$/.test(entry.url ?? "") ||
-    Object.keys(entry).every(k => ["type", "command", "args"].includes(k)) && entry.command === command &&
-    Array.isArray(entry.args) && /[/\\]bin[/\\]apostil\.js$/.test(entry.args[0] ?? "") && entry.args[1] === "mcp" && !entry.args.includes("--read-only")
-  );
+  // Entries written before 0.3.0 ran an absolute node and CLI path.
+  const legacy = (entry: Record<string, any>) => /[/\\]bin[/\\]apostil\.js$/.test(entry.args[0] ?? "") && entry.args[1] === "mcp";
+  const stdio = (entry: Record<string, any>) => Object.keys(entry).every(k => ["type", "command", "args"].includes(k)) && Array.isArray(entry.args) &&
+    (legacy(entry) || (entry.command === command && entry.args.slice(0, 3).join(" ") === "-y apostil mcp"));
+  const canUpdate = (entry: Record<string, any>) => options.url
+    ? options.updateGenerated && (Object.keys(entry).every(k => ["type", "url"].includes(k)) && /^http:\/\/127\.0\.0\.1:\d+\/mcp$/.test(entry.url ?? "") || stdio(entry) && !entry.args.includes("--read-only"))
+    // Reconnecting replaces a legacy generated entry with the portable one, but never changes its access.
+    : stdio(entry) && legacy(entry) && entry.args.includes("--read-only") === !!options.readOnly;
   let content: string;
   if (options.client === "claude") {
     const config = original ? JSON.parse(original) : {};
@@ -75,7 +79,6 @@ export async function connectProject(options: ConnectionOptions) {
     // Avoid overwriting an edit made while preparing the connection.
     const current = await fs.readFile(filename, "utf8").catch(error => { if (error.code === "ENOENT") return ""; throw error; });
     if (current !== original) throw new Error("MCP configuration changed during setup. Please retry.");
-    if (original) await fs.writeFile(`${filename}.apostil-backup`, original, { flag: "wx", mode: 0o600 }).catch(error => { if (error.code !== "EEXIST") throw error; });
     const temporary = `${filename}.${randomUUID()}.tmp`;
     try {
       await fs.writeFile(temporary, content, { flag: "wx", mode: 0o600 });

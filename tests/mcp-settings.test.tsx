@@ -33,3 +33,10 @@ it("does not show a running state for an old server or a custom remote adapter",
   view.rerender(<MCPSettings endpoint="https://remote.example/api?mcp=1" />);
   expect(fetch).toHaveBeenCalledOnce();
 });
+it("shows the install command when the optional MCP packages are missing", async () => {
+  vi.stubGlobal("fetch", vi.fn(async () => Response.json({ error: "The MCP packages are not installed. Run: npx apostil mcp init" }, { status: 501 })));
+  render(<MCPSettings endpoint="/api/apostil?mcp=1" />);
+  fireEvent.click(screen.getByRole("button", { name: /MCP/ }));
+  await screen.findByText("The MCP packages are not installed. Run: npx apostil mcp init");
+  expect(screen.queryByRole("button", { name: "Start MCP" })).toBeNull();
+});

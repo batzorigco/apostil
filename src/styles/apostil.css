@@ -11,7 +11,7 @@
   margin: 0; padding: 0; border: 0; border-left: 1px solid #e5e5e5;
   border-radius: 0; background: #fff; color: #525252;
   font-family: inherit; font-size: 12px; font-weight: 400; line-height: 16px;
-  text-align: left; letter-spacing: normal;
+  text-align: left; letter-spacing: normal; outline: none;
   box-shadow: 0 20px 25px -5px #0000001a, 0 8px 10px -6px #0000001a !important;
 }
 [data-apostil-ui="sidebar"], [data-apostil-ui="sidebar"] * { box-sizing: border-box; }
@@ -76,3 +76,11 @@
 [data-apostil-ui="sidebar"] .apostil-thread-actions > div { position: absolute; right: 0; z-index: 1; width: 220px; display: flex; flex-direction: column; gap: 12px; padding: 12px; background: #fff; border: 1px solid #e5e5e5; border-radius: 8px; box-shadow: 0 8px 24px #0002; }
 [data-apostil-ui="sidebar"] > [aria-label="MCP connection"] { flex-shrink: 0; }
 [data-apostil-ui="sidebar"] .apostil-thread-actions:not([open]) > div { display: none; }
+/* Touch has no hover to reveal the task actions, and needs 32px targets. The hit area grows; the drawn control does not. */
+@media (hover: none) {
+  [data-apostil-ui="sidebar"] .apostil-thread-actions:not([open]):not(:focus-within) { opacity: 1; }
+}
+@media (pointer: coarse) {
+  [data-apostil-ui="sidebar"] :is(.apostil-icon-button, .apostil-thread-actions summary) { position: relative; }
+  [data-apostil-ui="sidebar"] :is(.apostil-icon-button, .apostil-thread-actions summary)::after { content: ""; position: absolute; inset: -4px; }
+}
