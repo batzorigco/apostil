@@ -19,6 +19,9 @@ it("scrolls to the selected sidebar comment from either tab without reloading th
   fireEvent.click(screen.getByText("All Pages"));
   await screen.findByText("1 open across 1 pages");
   fireEvent.click(screen.getByText("Adjust footer spacing"));
+  expect(scroll).toHaveBeenCalledTimes(1);
+  expect(screen.getByRole("button", { name: "Reply" }).getAttribute("aria-expanded")).toBe("false");
+  fireEvent.click(screen.getByText("Adjust footer spacing"));
   expect(scroll).toHaveBeenCalledTimes(2);
 });
 
@@ -147,6 +150,14 @@ it("marks replies read when expanded, avoids repeating the original comment, and
   fireEvent.click(screen.getByRole("button", { name: "1 new reply" }));
   expect(screen.getAllByText("Original feedback")).toHaveLength(1);
   expect(screen.getByText("Fixed the contrast")).toBeTruthy();
+  fireEvent.click(screen.getByText("Original feedback"));
+  expect(screen.queryByText("Fixed the contrast")).toBeNull();
+  const card = screen.getByRole("article", { name: "Comment by Reviewer" });
+  fireEvent.keyDown(card, { key: "Enter" });
+  expect(screen.getByText("Fixed the contrast")).toBeTruthy();
+  fireEvent.keyDown(card, { key: " " });
+  expect(screen.queryByText("Fixed the contrast")).toBeNull();
+  fireEvent.click(screen.getByText("Original feedback"));
   fireEvent.click(screen.getByRole("button", { name: "1 reply" }));
   expect(screen.queryByText("Fixed the contrast")).toBeNull();
   expect(screen.queryByText("1 new reply")).toBeNull();

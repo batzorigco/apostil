@@ -23,7 +23,7 @@ type AllPagesData = { pageId: string; threads: ApostilThread[] }[];
 
 export function CommentSidebar() {
   const { threads, pageId, mcpEndpoint, loadAllThreads, storageError, refreshThreads,
-    sidebarOpen, setSidebarOpen, setActiveThreadId, brandColor } = useApostil();
+    sidebarOpen, setSidebarOpen, activeThreadId, setActiveThreadId, brandColor } = useApostil();
   const [tab, setTab] = useState<"page" | "all">("page");
   const [allPages, setAllPages] = useState<AllPagesData>([]);
   const [loadingAll, setLoadingAll] = useState(false);
@@ -35,6 +35,11 @@ export function CommentSidebar() {
       let route = thread.pageId === "home" ? "/" : "/" + thread.pageId.replace(/--/g, "/");
       if (thread.context?.url) { try { route = new URL(thread.context.url).pathname; } catch { /* Legacy fallback. */ } }
       window.location.href = route + "#apostil-" + encodeURIComponent(thread.id);
+      return;
+    }
+    if (activeThreadId === thread.id) {
+      setActiveThreadId(null);
+      setLocationHint("");
       return;
     }
     setActiveThreadId(thread.id);
@@ -124,7 +129,7 @@ function Author({ comment, children }: { comment: ApostilComment; children?: Rea
 }
 
 function ThreadItem({ thread, onSelect }: { thread: ApostilThread; onSelect: () => void }) {
-  const { pageId, activeThreadId, setActiveThreadId, addReply, resolveThread, user, sidebarOpen } = useApostil();
+  const { pageId, activeThreadId, addReply, resolveThread, user, sidebarOpen } = useApostil();
   const local = thread.pageId === pageId;
   const expanded = local && activeThreadId === thread.id;
   const key = `apostil-seen:${JSON.stringify([thread.pageId, thread.id])}`;
@@ -154,7 +159,7 @@ function ThreadItem({ thread, onSelect }: { thread: ApostilThread; onSelect: () 
           <p>{first.body}</p><TaskUpdateDetails comment={first} />
           <div className="apostil-comment-meta">
             <span className="apostil-location" title={label}>In {label.startsWith("#") ? label : `#${label}`}</span>
-            <button type="button" className={`apostil-replies${!expanded && unread ? " has-unread" : ""}`} aria-expanded={expanded} onClick={e => { e.stopPropagation(); expanded ? setActiveThreadId(null) : onSelect(); }}>
+            <button type="button" className={`apostil-replies${!expanded && unread ? " has-unread" : ""}`} aria-expanded={expanded} onClick={e => { e.stopPropagation(); onSelect(); }}>
               {replyCount ? `${replyCount}${!expanded && unread ? " new" : ""} ${replyCount === 1 ? "reply" : "replies"}` : "Reply"}
               <span className={expanded ? "apostil-chevron-up" : ""}><SidebarIcon name={!expanded && unread ? "chevron-unread" : expanded ? "chevron-expanded" : "chevron"} /></span>
             </button>
