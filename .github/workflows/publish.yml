@@ -33,8 +33,3 @@ jobs:
       - run: npm publish --provenance --access public --tag ${{ github.event.release.prerelease && 'next' || 'latest' }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-      # To switch to npm trusted publishing (no long-lived token): on npmjs.com open the apostil
-      # package > Settings > Trusted Publisher, add GitHub Actions with repository
-      # batzorigco/apostil and workflow file publish.yml. Then add `- run: npm install -g npm@latest`
-      # before the publish step (trusted publishing needs npm >= 11.5.1), delete the `env:` block
-      # above and the NPM_TOKEN secret. `id-token: write` must stay; `--provenance` becomes automatic.
