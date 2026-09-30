@@ -71,7 +71,7 @@ it("rejects stale legacy status-only changes and deletions, including omission o
   await store.save("home", [{ ...seed(), resolved: true, status: "completed" }], [seed()]);
   const handler = createStorageHandler(project);
   for (const body of [[seed()], []]) {
-    const response = await handler.POST(new Request("http://localhost/api/apostil?pageId=home", { method: "POST", body: JSON.stringify(body) }));
+    const response = await handler.POST(new Request("http://localhost/api/apostil?pageId=home", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }));
     expect(response.status).toBe(409);
     expect((await store.load("home"))[0]).toMatchObject({ resolved: true, status: "completed" });
   }

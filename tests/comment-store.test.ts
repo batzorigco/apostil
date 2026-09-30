@@ -74,6 +74,22 @@ it("round trips browser saves and MCP replies through the actual shared HTTP han
   expect(saved.resolved).toBe(true);
   expect(await adapter.loadAll!()).toHaveLength(1);
 });
+it("rejects cross-site and non-JSON requests on the shared HTTP handler without writing", async () => {
+  const handler = createStorageHandler(project);
+  const url = "http://localhost:3000/api/apostil?pageId=home";
+  const post = (headers: Record<string, string>) => handler.POST(new Request(url, { method: "POST", headers, body: JSON.stringify([thread]) }));
+  const json = { "Content-Type": "application/json" };
+  expect((await post({ ...json, Origin: "https://evil.example" })).status).toBe(403);
+  expect((await post({ ...json, Origin: "null" })).status).toBe(403);
+  expect((await post({ ...json, "Sec-Fetch-Site": "cross-site" })).status).toBe(403);
+  expect((await post({ "Content-Type": "text/plain", Origin: "http://localhost:3000" })).status).toBe(415);
+  expect((await handler.GET(new Request(url, { headers: { "Sec-Fetch-Site": "cross-site" } }))).status).toBe(403);
+  expect(await fs.readdir(project)).toEqual([]);
+  expect((await post({ ...json, Origin: "http://localhost:3000", "Sec-Fetch-Site": "same-origin" })).status).toBe(200);
+  // Behind a proxy request.url carries the internal host; the browser's Host is what Origin must match.
+  expect((await post({ ...json, Origin: "https://app.example", Host: "app.example" })).status).toBe(200);
+  expect((await post({ ...json, Origin: "https://evil.example", "X-Forwarded-Host": "app.example" })).status).toBe(403);
+});
 
 it("preserves MCP task states through stale browser saves and does not replay status on retry", async () => {
   await store.save("home", [thread]);

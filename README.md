@@ -35,7 +35,29 @@ Use `NEXT_PUBLIC_APOSTIL` in Next.js or `VITE_APOSTIL` in Vite for the override.
 
 ### Use Apostil just for yourself
 
-Default mode limits Apostil to development; it does **not** keep all setup changes out of Git automatically. For a personal installation:
+Default mode limits Apostil to development; it does **not** keep all setup changes out of Git automatically. Choose one of these approaches.
+
+**Vite: separate local files, no tracked app edits (manual setup)**
+
+If your project uses a committed `vite.config.ts` and has no `vite.config.js`:
+
+1. Create a local `vite.config.js` that imports the committed config and adds Apostil’s storage plugin and a script entry for a local `apostil.dev.tsx`. Vite discovers `.js` before `.ts` unless the start command explicitly selects a config.
+2. Mount the Apostil provider, overlay, sidebar, and toggle from `apostil.dev.tsx`, import its styles, and use `createRestAdapter("/api/apostil")` with the current page ID. Use a locally installed Apostil package or aliases to a built Apostil checkout.
+3. Enable the additions only for the intended dev command. Return the committed config unchanged for builds and tests, including when `VITEST` is set.
+4. Add these new files and the comment directory to `.git/info/exclude`. For example, from a monorepo root:
+
+   ```gitignore
+   /packages/website/vite.config.js
+   /packages/website/apostil.dev.tsx
+   /packages/website/.apostil/
+   ```
+
+5. Connect MCP to that same website project and comment directory. Keep any newly created client config and its backup excluded too. With a local Apostil checkout, rebuild it and restart MCP after updating it.
+6. Check `git status` for unintended tracked edits, then start your usual website dev command. Verify that production builds and tests still use the original config.
+
+This is a custom setup; `apostil init` does not generate it. Exclude rules apply only to untracked files, so do not use this approach to hide an existing shared config.
+
+**Standard setup: keep integration edits uncommitted**
 
 1. Install without changing the project’s dependency files, then initialize:
 
