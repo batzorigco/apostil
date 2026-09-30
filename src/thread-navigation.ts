@@ -1,8 +1,38 @@
-import { findThreadTarget } from "./capture";
+import { findThreadTarget, resolveElement } from "./capture";
 import type { ApostilThread } from "./types";
 
-/** Reveal the saved anchor without activating controls or opening unknown dialogs. */
+/** Open identified native surfaces without clicking arbitrary application controls. */
+function revealThreadSurfaces(thread: ApostilThread): void {
+  const target = findThreadTarget(thread, false);
+  if (!target) return;
+  const surfaces = new Set<HTMLElement>();
+  const addAncestors = (element: HTMLElement) => {
+    const ancestors: HTMLElement[] = [];
+    for (let current: HTMLElement | null = element; current; current = current.parentElement) {
+      if (current.matches('dialog, [popover], details')) ancestors.unshift(current);
+    }
+    ancestors.forEach(surface => surfaces.add(surface));
+  };
+  for (const saved of thread.context?.surfaces ?? []) {
+    const surface = resolveElement(saved.element, false);
+    if (surface) addAncestors(surface);
+  }
+  addAncestors(target);
+  for (const surface of surfaces) {
+    try {
+      if (surface instanceof HTMLDialogElement && !surface.open) surface.showModal();
+      else if (surface.hasAttribute("popover") && !surface.matches(":popover-open")) surface.showPopover();
+      else if (surface instanceof HTMLDetailsElement) surface.open = true;
+    } catch {
+      // Unsupported APIs or unavailable surfaces retain the manual location hint.
+      return;
+    }
+  }
+}
+
+/** Reveal and scroll to the saved anchor. */
 export function scrollToThread(thread: ApostilThread): boolean {
+  if (!findThreadTarget(thread)) revealThreadSurfaces(thread);
   const target = findThreadTarget(thread);
   if (!target) return false;
 

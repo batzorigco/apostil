@@ -104,29 +104,29 @@ export function isVisible(element: Element): element is HTMLElement {
   return element.getClientRects().length > 0;
 }
 
-function resolveElement(snapshot: ApostilElement): HTMLElement | null {
+export function resolveElement(snapshot: ApostilElement, requireVisible = true): HTMLElement | null {
   try {
     const matches = document.querySelectorAll(snapshot.selector);
     if (matches.length !== 1) return null;
     const el = matches[0];
-    if (!isVisible(el) || el.tagName.toLowerCase() !== snapshot.tag) return null;
+    if (!(el instanceof HTMLElement) || (requireVisible && !isVisible(el)) || el.tagName.toLowerCase() !== snapshot.tag) return null;
     // Positional paths must not silently attach to a different repeated item.
     if (snapshot.selectorKind === "structural" && snapshot.text && describeElement(el).text !== snapshot.text) return null;
     return el;
   } catch { return null; }
 }
 
-export function findThreadTarget(thread: ApostilThread): HTMLElement | null {
+export function findThreadTarget(thread: ApostilThread, requireVisible = true): HTMLElement | null {
   if (thread.context) {
-    if (thread.context.surfaces.some(surface => !resolveElement(surface.element))) return null;
-    return resolveElement(thread.context.anchor);
+    if (thread.context.surfaces.some(surface => !resolveElement(surface.element, requireVisible))) return null;
+    return resolveElement(thread.context.anchor, requireVisible);
   }
   if (!thread.targetId) return null;
   // Legacy manual targets take precedence over selectors with the same name.
   for (const selector of [attrSelector("data-comment-target", thread.targetId), thread.targetId]) {
     try {
       const matches = document.querySelectorAll(selector);
-      if (matches.length === 1 && isVisible(matches[0])) return matches[0];
+      if (matches.length === 1 && matches[0] instanceof HTMLElement && (!requireVisible || isVisible(matches[0]))) return matches[0];
     } catch { /* Legacy selector may be invalid. */ }
   }
   return null;

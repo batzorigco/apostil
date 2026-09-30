@@ -134,3 +134,29 @@ it("shows review instructions, lets a reviewer complete a task and reopen it", a
   expect(screen.getByText("Open (1)")).toBeTruthy();
   await waitFor(() => expect(save.mock.calls.at(-1)?.[1][0]).toMatchObject({ status: "open", resolved: false }));
 });
+
+it("marks replies read when expanded, avoids repeating the original comment, and collapses groups", async () => {
+  const thread: ApostilThread = { id: "read-state", pageId: "home", pinX: 10, pinY: 10, resolved: false, createdAt: "2026-01-01", comments: [
+    { id: "original", threadId: "read-state", author: { id: "reviewer", name: "Reviewer", color: "blue" }, body: "Original feedback", createdAt: "2026-01-01" },
+    { id: "reply", threadId: "read-state", author: { id: "ai", name: "Codex", color: "blue" }, body: "Fixed the contrast", createdAt: "2026-01-01" },
+  ] };
+  const storage = { load: async () => [thread], save: async () => {} };
+  const view = render(<ApostilProvider pageId="home" storage={storage}><Controls /><CommentSidebar /></ApostilProvider>);
+  await waitFor(() => expect((screen.getByText("Comment") as HTMLButtonElement).disabled).toBe(false));
+  fireEvent.click(screen.getByText("List"));
+  fireEvent.click(screen.getByRole("button", { name: "1 new reply" }));
+  expect(screen.getAllByText("Original feedback")).toHaveLength(1);
+  expect(screen.getByText("Fixed the contrast")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "1 reply" }));
+  expect(screen.queryByText("Fixed the contrast")).toBeNull();
+  expect(screen.queryByText("1 new reply")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Open (1)" }));
+  expect(screen.queryByText("Original feedback")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Open (1)" }));
+  expect(screen.getByText("Original feedback")).toBeTruthy();
+  view.unmount();
+  render(<ApostilProvider pageId="home" storage={storage}><Controls /><CommentSidebar /></ApostilProvider>);
+  await waitFor(() => expect((screen.getByText("Comment") as HTMLButtonElement).disabled).toBe(false));
+  fireEvent.click(screen.getByText("List"));
+  expect(screen.getByRole("button", { name: "1 reply" })).toBeTruthy();
+});

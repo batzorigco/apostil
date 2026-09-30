@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { SidebarIcon } from "./sidebar-icon";
 import { Send } from "../icons";
 import { useApostil } from "../context";
 
@@ -8,10 +9,12 @@ export function CommentComposer({
   onSubmit,
   placeholder = "Add a comment...",
   autoFocus = false,
+  compact = false,
 }: {
   onSubmit: (body: string) => void;
   placeholder?: string;
   autoFocus?: boolean;
+  compact?: boolean;
 }) {
   const { brandColor } = useApostil();
   const [value, setValue] = useState("");
@@ -35,7 +38,7 @@ export function CommentComposer({
   };
 
   return (
-    <div className="flex gap-2 items-end">
+    <div className={`flex gap-2 items-end${compact ? " apostil-compact-composer" : ""}`}>
       <textarea
         ref={inputRef}
         value={value}
@@ -53,6 +56,7 @@ export function CommentComposer({
                    min-h-[36px] max-h-[120px]"
       />
       <button
+        aria-label={compact ? "Send reply" : "Send comment"}
         onClick={handleSubmit}
         disabled={!value.trim()}
         className="flex items-center justify-center w-9 h-9 rounded-lg
@@ -60,7 +64,7 @@ export function CommentComposer({
                    transition-colors shrink-0"
         style={{ backgroundColor: brandColor }}
       >
-        <Send className="w-3.5 h-3.5" />
+        {compact ? <SidebarIcon name="send" /> : <Send className="w-3.5 h-3.5" />}
       </button>
     </div>
   );

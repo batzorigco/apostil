@@ -11,6 +11,7 @@ export default defineConfig([
     format: ["esm", "cjs"],
     dts: true,
     sourcemap: true,
+    loader: { ".svg": "dataurl" },
     clean: true,
     external: ["react", "react-dom"],
     banner: (ctx) => ctx.format === "esm" ? { js: '"use client";' } : {},

@@ -12,7 +12,7 @@ const tones = {
 
 export function TaskStatusBadge({ thread }: { thread: ApostilThread }) {
   const status = getTaskStatus(thread);
-  return <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${tones[status]}`}>
+  return <span data-status={status} className={`apostil-status-badge inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${tones[status]}`}>
     <span aria-hidden="true">{status === "completed" ? "✓" : status === "needs_review" ? "◉" : "○"}</span>
     {taskStatusLabels[status]}
   </span>;

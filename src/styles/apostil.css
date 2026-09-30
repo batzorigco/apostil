@@ -2,3 +2,77 @@
   @import "tailwindcss/utilities" source("../components");
   @import "tailwindcss/theme";
 }
+
+/* Scoped, self-contained styles: host resets and Tailwind theme variables must
+   not control the review sheet's geometry, typography, or elevation. */
+[data-apostil-ui="sidebar"] {
+  position: fixed; inset: 0 0 0 auto; width: min(320px, 100vw);
+  display: flex; flex-direction: column; isolation: isolate;
+  margin: 0; padding: 0; border: 0; border-left: 1px solid #e5e5e5;
+  border-radius: 0; background: #fff; color: #525252;
+  font-family: inherit; font-size: 12px; font-weight: 400; line-height: 16px;
+  text-align: left; letter-spacing: normal;
+  box-shadow: 0 20px 25px -5px #0000001a, 0 8px 10px -6px #0000001a !important;
+}
+[data-apostil-ui="sidebar"], [data-apostil-ui="sidebar"] * { box-sizing: border-box; }
+[data-apostil-ui="sidebar"] :where(.apostil-sidebar-header, .apostil-sidebar-tabs, .apostil-sidebar-list) :is(button, summary, textarea, select) {
+  margin: 0; font: inherit; letter-spacing: normal; text-transform: none;
+}
+[data-apostil-ui="sidebar"] :where(.apostil-sidebar-header, .apostil-sidebar-tabs, .apostil-sidebar-list) button {
+  display: inline-flex; align-items: center; justify-content: center;
+  appearance: none; border: 0; padding: 0; background: transparent;
+  color: inherit; box-shadow: none; cursor: pointer;
+}
+[data-apostil-ui="sidebar"] :is(button, summary, article):focus-visible { outline: 2px solid #a3a3a3; outline-offset: 2px; }
+[data-apostil-ui="sidebar"] button:disabled { opacity: .4; cursor: wait; }
+[data-apostil-ui="sidebar"] .apostil-design-icon { display: block; flex-shrink: 0; max-width: none; margin: 0; padding: 0; border: 0; }
+[data-apostil-ui="sidebar"] .apostil-sidebar-header { display: flex; align-items: center; gap: 8px; flex-shrink: 0; min-height: 48px; padding: 12px 16px; border-bottom: 1px solid #f5f5f5; }
+[data-apostil-ui="sidebar"] .apostil-sidebar-header > span { flex: 1; color: #171717; font-size: 14px; font-weight: 600; line-height: 20px; }
+[data-apostil-ui="sidebar"] .apostil-icon-button { width: 24px; height: 24px; flex-shrink: 0; border-radius: 4px; }
+[data-apostil-ui="sidebar"] .apostil-icon-button:hover { background: #f5f5f5; }
+[data-apostil-ui="sidebar"] .apostil-sidebar-tabs { display: flex; flex-shrink: 0; border-bottom: 1px solid #f5f5f5; }
+[data-apostil-ui="sidebar"] .apostil-sidebar-tabs button { flex: 1; gap: 6px; padding: 8px 0; border-radius: 0; border-bottom: 2px solid transparent; color: #a1a1a1; font-weight: 500; }
+[data-apostil-ui="sidebar"] .apostil-count { padding: 1px 6px; border-radius: 999px; background: #fef2f2; color: #e7000b; font-size: 10px; line-height: 13.3333px; }
+[data-apostil-ui="sidebar"] .apostil-sidebar-list { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 16px 8px; display: flex; flex-direction: column; gap: 16px; }
+[data-apostil-ui="sidebar"] .apostil-sidebar-list p { margin: 0; }
+[data-apostil-ui="sidebar"] .apostil-thread-group { display: flex; flex-direction: column; gap: 8px; }
+[data-apostil-ui="sidebar"] .apostil-group-toggle { width: 100%; justify-content: flex-start; gap: 8px; padding: 4px 0; color: #737373; font-size: 10px; font-weight: 600; line-height: 15px; letter-spacing: .5px; }
+[data-apostil-ui="sidebar"] .apostil-chevron-closed { transform: rotate(-90deg); }
+[data-apostil-ui="sidebar"] .apostil-chevron-up { transform: rotate(180deg); }
+[data-apostil-ui="sidebar"] .apostil-thread-card { position: relative; margin: 0; padding: 0; border: 1px solid #f5f5f5; border-radius: 16px; background: #fff; color: #525252; cursor: pointer; }
+[data-apostil-ui="sidebar"] .apostil-thread-card.is-expanded { border-color: #737373; }
+[data-apostil-ui="sidebar"] .apostil-thread-messages { display: flex; flex-direction: column; gap: 12px; padding: 12px; }
+[data-apostil-ui="sidebar"] .apostil-comment-message { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+[data-apostil-ui="sidebar"] .apostil-comment-author { display: flex; align-items: center; gap: 8px; min-height: 20px; }
+[data-apostil-ui="sidebar"] .apostil-avatar { display: inline-flex; width: 20px; height: 20px; align-items: center; justify-content: center; flex-shrink: 0; border-radius: 50%; color: white; font-size: 8px; font-weight: 600; line-height: 12px; }
+[data-apostil-ui="sidebar"] .apostil-author-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #404040; font-weight: 500; }
+[data-apostil-ui="sidebar"] .apostil-comment-author time { margin-left: auto; flex-shrink: 0; color: #a1a1a1; font-size: 10px; line-height: 15px; white-space: nowrap; }
+[data-apostil-ui="sidebar"] .apostil-comment-bubble { display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 8px 12px; border-radius: 8px; background: #f7f7f7; }
+[data-apostil-ui="sidebar"] .apostil-comment-message:first-child .apostil-comment-bubble { padding-bottom: 12px; }
+[data-apostil-ui="sidebar"] .apostil-comment-bubble p { font: inherit; color: inherit; white-space: pre-wrap; overflow-wrap: anywhere; }
+[data-apostil-ui="sidebar"] .apostil-comment-meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+[data-apostil-ui="sidebar"] .apostil-location, [data-apostil-ui="sidebar"] .apostil-replies { padding: 2px 6px; border-radius: 4px; background: #fff; color: #3d3d3d; font-size: 10px; font-weight: 500; line-height: 15px; }
+[data-apostil-ui="sidebar"] .apostil-location { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+[data-apostil-ui="sidebar"] .apostil-replies { gap: 4px; flex-shrink: 0; }
+[data-apostil-ui="sidebar"] .apostil-replies.has-unread { gap: 8px; background: #e7000b; color: #fff; }
+[data-apostil-ui="sidebar"] .apostil-status-badge { flex-shrink: 0; display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; font-size: 10px; font-weight: 600; line-height: 15px; }
+[data-apostil-ui="sidebar"] .apostil-status-badge[data-status="completed"] { background: #ecfdf5; color: #007a55; }
+[data-apostil-ui="sidebar"] .apostil-status-badge[data-status="needs_review"] { background: #fffbeb; color: #92400e; }
+[data-apostil-ui="sidebar"] .apostil-reply-row { padding: 10px 12px; border-top: 1px solid #f5f5f5; border-radius: 0 0 16px 16px; background: #fafafa; cursor: default; }
+[data-apostil-ui="sidebar"] .apostil-compact-composer { display: flex; align-items: flex-end; gap: 8px; }
+[data-apostil-ui="sidebar"] .apostil-compact-composer textarea { flex: 1; min-width: 0; min-height: 36px; max-height: 120px; padding: 6px 12px; resize: vertical; border: 1px solid #e5e5e5; border-radius: 8px; background: #fff; color: #525252; line-height: 16px; }
+[data-apostil-ui="sidebar"] .apostil-compact-composer textarea::placeholder { color: #a1a1a1; opacity: 1; }
+[data-apostil-ui="sidebar"] .apostil-compact-composer textarea:focus { outline: none; box-shadow: 0 0 0 2px #d4d4d4; }
+[data-apostil-ui="sidebar"] .apostil-compact-composer button { width: 36px; height: 36px; flex-shrink: 0; border-radius: 8px; }
+[data-apostil-ui="sidebar"] .apostil-compact-composer button:disabled { opacity: .3; cursor: default; }
+[data-apostil-ui="sidebar"] .apostil-sidebar-empty { padding: 16px; text-align: center; color: #a1a1a1; }
+[data-apostil-ui="sidebar"] .apostil-sidebar-hint { padding: 0 4px; color: #737373; font-size: 10px; }
+[data-apostil-ui="sidebar"] .apostil-sidebar-error { padding: 4px; color: #b91c1c; }
+[data-apostil-ui="sidebar"] .apostil-thread-actions { position: absolute; top: 8px; right: 8px; margin: 0; padding: 0; border: 0; background: #fff; border-radius: 4px; cursor: default; }
+[data-apostil-ui="sidebar"] .apostil-thread-actions:not([open]):not(:focus-within) { opacity: 0; }
+[data-apostil-ui="sidebar"] .apostil-thread-card:hover > .apostil-thread-messages .apostil-thread-actions { opacity: 1; }
+[data-apostil-ui="sidebar"] .apostil-thread-actions summary { list-style: none; width: 24px; height: 24px; text-align: center; cursor: pointer; }
+[data-apostil-ui="sidebar"] .apostil-thread-actions summary::-webkit-details-marker { display: none; }
+[data-apostil-ui="sidebar"] .apostil-thread-actions > div { position: absolute; right: 0; z-index: 1; width: 220px; display: flex; flex-direction: column; gap: 12px; padding: 12px; background: #fff; border: 1px solid #e5e5e5; border-radius: 8px; box-shadow: 0 8px 24px #0002; }
+[data-apostil-ui="sidebar"] > [aria-label="MCP connection"] { flex-shrink: 0; }
+[data-apostil-ui="sidebar"] .apostil-thread-actions:not([open]) > div { display: none; }

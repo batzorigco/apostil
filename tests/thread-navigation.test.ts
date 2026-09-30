@@ -49,10 +49,49 @@ it("respects reduced motion and handles anchors inside sticky ancestors", () => 
   expect(footer.style.position).toBe("sticky");
 });
 
-it("does not activate a closed dialog or scroll to an unrelated element", () => {
+it("opens the target's native dialog without clicking application controls", () => {
   document.body.innerHTML = '<button id="trigger">Open</button><dialog><div id="footer">Hidden comment</div></dialog>';
+  const click = vi.fn();
+  document.querySelector("button")!.addEventListener("click", click);
+  const dialog = document.querySelector("dialog")!;
+  const open = dialog.showModal = vi.fn(() => { dialog.open = true; });
+  const scroll = vi.fn();
+  document.getElementById("footer")!.scrollIntoView = scroll;
+  expect(scrollToThread(thread)).toBe(true);
+  expect(open).toHaveBeenCalledOnce();
+  expect(scroll).toHaveBeenCalledOnce();
+  expect(click).not.toHaveBeenCalled();
+  expect(scrollToThread(thread)).toBe(true);
+  expect(open).toHaveBeenCalledOnce();
+});
+
+it("opens nested native surfaces from outer to inner", () => {
+  document.body.innerHTML = '<dialog><details><summary>More</summary><div popover><div id="footer">Hidden comment</div></div></details></dialog>';
+  const dialog = document.querySelector("dialog")!;
+  const details = document.querySelector("details")!;
+  const popover = document.querySelector<HTMLElement>("[popover]")!;
+  let popoverOpen = false;
+  const matches = popover.matches.bind(popover);
+  vi.spyOn(popover, "matches").mockImplementation(selector => selector === ":popover-open" ? popoverOpen : matches(selector));
+  dialog.showModal = vi.fn(() => { dialog.open = true; });
+  popover.showPopover = vi.fn(() => {
+    expect(dialog.open).toBe(true);
+    expect(details.open).toBe(true);
+    popoverOpen = true;
+    popover.style.display = "block";
+  });
+  document.getElementById("footer")!.scrollIntoView = vi.fn();
+  expect(scrollToThread(thread)).toBe(true);
+  expect(popover.showPopover).toHaveBeenCalledOnce();
+});
+
+it("keeps the fallback for custom hidden dialogs and unavailable native APIs", () => {
+  document.body.innerHTML = '<button aria-controls="custom">Open</button><div role="dialog" id="custom" hidden><div id="footer">Hidden</div></div>';
   const click = vi.fn();
   document.querySelector("button")!.addEventListener("click", click);
   expect(scrollToThread(thread)).toBe(false);
   expect(click).not.toHaveBeenCalled();
+  document.body.innerHTML = '<dialog><div id="footer">Hidden</div></dialog>';
+  document.querySelector("dialog")!.showModal = vi.fn(() => { throw new Error("Unavailable"); });
+  expect(scrollToThread(thread)).toBe(false);
 });
