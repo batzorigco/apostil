@@ -1,0 +1,110 @@
+// @vitest-environment node
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { request as httpRequest } from "node:http";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { startHTTPMCP } from "../src/mcp/http";
+import { MCPDevController } from "../src/mcp/dev";
+import { CommentStore } from "../src/server/comment-store";
+
+let project: string;
+const cleanup: (() => Promise<unknown>)[] = [];
+beforeEach(async () => { project = await fs.mkdtemp(path.join(os.tmpdir(), "apostil-http-")); });
+afterEach(async () => { vi.unstubAllEnvs(); for (const close of cleanup.reverse()) await close(); cleanup.length = 0; await fs.rm(project, { recursive: true, force: true }); });
+
+it("serves real MCP tools, reports initialized clients, and rejects browser/foreign-host requests", async () => {
+  const server = await startHTTPMCP({ project, port: 0 });
+  cleanup.push(() => server.close());
+  const url = new URL(`http://127.0.0.1:${server.port}/mcp`);
+  for (const headers of [{ origin: "https://other.example" }, { origin: url.origin }, { host: "other.example" }]) {
+    const status = await new Promise<number | undefined>((resolve, reject) => {
+      const req = httpRequest(url, { headers }, res => { res.resume(); resolve(res.statusCode); });
+      req.on("error", reject); req.end();
+    });
+    expect(status).toBe(403);
+  }
+  const client = new Client({ name: "Test Claude", version: "1" });
+  const transport = new StreamableHTTPClientTransport(url);
+  cleanup.push(() => client.close());
+  await client.connect(transport);
+  expect((await client.listTools()).tools.map(t => t.name)).toContain("complete_task");
+  expect(server.clients()).toEqual([expect.objectContaining({ name: "Test Claude", lastSeen: expect.any(String) })]);
+  expect((await client.callTool({ name: "list_comments", arguments: {} })).structuredContent).toMatchObject({ total: 0 });
+  await transport.terminateSession();
+  expect(server.clients()).toEqual([]);
+});
+
+it("saves setup, restores on dev restart, configures clients and stops cleanly", async () => {
+  const probe = await startHTTPMCP({ project, port: 0 });
+  const port = probe.port; await probe.close();
+  let controller = new MCPDevController(project);
+  cleanup.push(() => controller.close());
+  const request = (body?: object, headers: Record<string, string> = { "X-Apostil-MCP": "1", origin: "http://localhost:3000" }) => controller.handle(new Request("http://localhost:3000/api/apostil?mcp=1", { method: body ? "POST" : "GET", headers, ...(body ? { body: JSON.stringify(body) } : {}) }));
+  expect((await request({ action: "start", port }, {})).status).toBe(403);
+  expect((await request({ action: "start", port }, { "X-Apostil-MCP": "1", origin: "https://other.example" })).status).toBe(403);
+  expect((await request({ action: "start", port: 80 })).status).toBe(400);
+  expect(await (await request({ action: "start", port })).json()).toMatchObject({ running: true, port });
+  expect((await request({ action: "connect", client: "claude" })).status).toBe(200);
+  expect(JSON.parse(await fs.readFile(path.join(project, ".mcp.json"), "utf8")).mcpServers.apostil).toEqual({ type: "http", url: `http://127.0.0.1:${port}/mcp` });
+  await controller.close();
+  controller = new MCPDevController(project); await controller.ready;
+  expect(controller.status().running).toBe(true);
+  expect(await (await request({ action: "stop" })).json()).toMatchObject({ running: false });
+  await expect(fetch(`http://127.0.0.1:${port}/mcp`)).rejects.toThrow();
+  vi.stubEnv("NODE_ENV", "production");
+  expect((await request({ action: "start", port })).status).toBe(403);
+});
+
+it("reports occupied ports without claiming MCP is running", async () => {
+  const occupied = await startHTTPMCP({ project, port: 0 });
+  cleanup.push(() => occupied.close());
+  const controller = new MCPDevController(project); cleanup.push(() => controller.close());
+  const response = await controller.handle(new Request("http://localhost:3000/api/apostil?mcp=1", { method: "POST", headers: { "X-Apostil-MCP": "1" }, body: JSON.stringify({ action: "start", port: occupied.port }) }));
+  expect(response.status).toBe(400);
+  expect(await response.json()).toMatchObject({ running: false, error: expect.stringContaining("in use") });
+});
+
+
+it("posts an agent outcome and requests review atomically through the connected HTTP server", async () => {
+  const store = new CommentStore(project);
+  await store.save("home", [{ id: "review", pageId: "home", pinX: 10, pinY: 10, resolved: false, createdAt: "now", comments: [] }]);
+  const server = await startHTTPMCP({ project, port: 0 });
+  cleanup.push(() => server.close());
+  const client = new Client({ name: "Review agent", version: "1" });
+  cleanup.push(() => client.close());
+  await client.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${server.port}/mcp`)));
+  const args = { pageId: "home", threadId: "review", body: "Fixed mobile spacing; layout tests pass.", status: "needs_review", reviewInstructions: "Check spacing on your phone.", requestId: "mobile-review" };
+  for (const invalid of [{ ...args, reviewInstructions: undefined }, { ...args, status: undefined }]) {
+    expect((await client.callTool({ name: "reply_to_comment", arguments: invalid })).isError).toBe(true);
+  }
+  expect((await store.load("home"))[0].comments).toHaveLength(0);
+  const outcome = await client.callTool({ name: "reply_to_comment", arguments: args });
+  expect(outcome.isError).not.toBe(true);
+  expect(outcome.structuredContent).toMatchObject({ thread: { status: "needs_review", resolved: false } });
+  await client.callTool({ name: "reply_to_comment", arguments: args });
+  const saved = (await store.load("home"))[0];
+  expect(saved.comments).toHaveLength(1);
+  expect(saved.comments[0]).toMatchObject({ body: args.body, taskUpdate: { status: "needs_review", details: args.reviewInstructions } });
+  expect((await client.callTool({ name: "get_comment_context", arguments: { pageId: "home", threadId: "review" } })).structuredContent).toMatchObject({ status: "needs_review", capabilities: { canUpdateStatus: true } });
+});
+
+it("evicts the least recently used session instead of refusing clients that never close theirs", async () => {
+  const server = await startHTTPMCP({ project, port: 0, author: "Pair", readOnly: true });
+  cleanup.push(() => server.close());
+  const connect = async (name: string) => {
+    const client = new Client({ name, version: "1" });
+    await client.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${server.port}/mcp`)));
+    return client;
+  };
+  const first = await connect("first"), second = await connect("second");
+  // The connection's own options apply over HTTP too.
+  expect((await second.listTools()).tools.map(t => t.name)).toEqual(["list_comments", "get_comment_context"]);
+  for (let i = 0; i < 31; i++) await connect(`extra-${i}`);
+  expect(server.clients()).toHaveLength(32);
+  expect(server.clients().map(c => c.name)).not.toContain("first");
+  await expect(first.listTools()).rejects.toThrow();
+  expect((await second.listTools()).tools).toHaveLength(2);
+});

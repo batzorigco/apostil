@@ -19,5 +19,13 @@ export type {
   ApostilUser,
   ApostilComment,
   ApostilThread,
+  ApostilTaskStatus,
+  ApostilTaskUpdate,
   ApostilStorage,
+  ApostilPage,
+  ApostilElement,
+  ApostilSurface,
+  ApostilCaptureContext,
 } from "./types";
+
+export { getTaskStatus } from "./task-status";

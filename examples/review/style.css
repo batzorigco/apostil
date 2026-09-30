@@ -1,0 +1,11 @@
+body { margin: 0; color: #242426; background: #f7f7f5; font-family: ui-sans-serif, system-ui, sans-serif; }
+main { max-width: 800px; margin: 100px auto; padding: 24px; }
+.eyebrow { font-size: 12px; letter-spacing: .15em; color: #777; }
+h1 { font-size: 44px; letter-spacing: -.04em; }
+main > p { max-width: 600px; line-height: 1.7; color: #666; }
+section { margin: 40px 0; padding: 30px; background: white; border: 1px solid #dededc; border-radius: 16px; }
+.demo-button { cursor: pointer; border: 1px solid #ccc; background: white; padding: 10px 16px; border-radius: 8px; color: #222; }
+dialog, [popover] { border: 1px solid #ddd; padding: 32px; border-radius: 16px; background: white; }
+dialog::backdrop { background: #0005; }
+[popover] { margin-top: 180px; }
+[data-apostil-ui] button { cursor: pointer; }

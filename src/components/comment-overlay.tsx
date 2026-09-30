@@ -1,36 +1,27 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
+import { captureContext, describeElement, SURFACE_SELECTOR } from "../capture";
+import { scrollToThread } from "../thread-navigation";
+import type { ApostilCaptureContext } from "../types";
 import { useApostil } from "../context";
 import { debug } from "../debug";
 import { CommentPin } from "./comment-pin";
 import { ApostilThreadPopover } from "./comment-thread";
 import { CommentComposer } from "./comment-composer";
 import { UserPrompt } from "./user-prompt";
+import { usePopoverPosition } from "./popover-position";
+import { usePortalHost } from "./viewport-portal";
+import { X } from "../icons";
 
 type PendingPin = {
   x: number;
   y: number;
   targetId?: string;
   targetLabel?: string;
+  context?: ApostilCaptureContext;
 };
-
-// Find the highest z-index on the page (cached per toggle)
-let cachedHighZ = 0;
-let cacheTimestamp = 0;
-function getHighestZIndex(): number {
-  const now = Date.now();
-  if (now - cacheTimestamp < 500) return cachedHighZ; // cache for 500ms
-  let max = 0;
-  const els = document.querySelectorAll("[style*='z-index'], [class*='z-']");
-  for (let i = 0; i < els.length; i++) {
-    const z = parseInt(getComputedStyle(els[i]).zIndex, 10);
-    if (!isNaN(z) && z > max) max = z;
-  }
-  cachedHighZ = Math.max(max, 100); // minimum 100
-  cacheTimestamp = now;
-  return cachedHighZ;
-}
 
 // Semantic elements that are meaningful containers
 const SEMANTIC_TAGS = new Set([
@@ -87,33 +78,7 @@ function inferLabel(el: HTMLElement): string | null {
  * Build a stable CSS selector path for an element.
  */
 function getElementId(el: HTMLElement): string {
-  const manual = el.getAttribute("data-comment-target");
-  if (manual) return manual;
-
-  if (el.id) return `#${el.id}`;
-
-  const label = el.getAttribute("aria-label");
-  if (label) return `${el.tagName.toLowerCase()}[aria-label="${label}"]`;
-
-  // nth-child path from nearest identifiable ancestor
-  const parts: string[] = [];
-  let cur: HTMLElement | null = el;
-  for (let depth = 0; cur && depth < 5; depth++) {
-    if (cur.id) {
-      parts.unshift(`#${cur.id}`);
-      break;
-    }
-    const p: HTMLElement | null = cur.parentElement;
-    if (p) {
-      const siblings = Array.from(p.children);
-      const idx = siblings.indexOf(cur);
-      parts.unshift(`${cur.tagName.toLowerCase()}:nth-child(${idx + 1})`);
-    } else {
-      parts.unshift(cur.tagName.toLowerCase());
-    }
-    cur = p;
-  }
-  return parts.join(" > ");
+  return describeElement(el).selector;
 }
 
 /**
@@ -125,6 +90,11 @@ function getElementLabel(el: HTMLElement): string {
 
   const ariaLabel = el.getAttribute("aria-label");
   if (ariaLabel) return ariaLabel;
+
+  if (el.matches('button, a, [role="button"], [role="menuitem"]')) {
+    const text = el.textContent?.trim();
+    if (text && text.length <= 80) return text;
+  }
 
   // Try to infer from content
   const inferred = inferLabel(el);
@@ -152,6 +122,10 @@ function getElementLabel(el: HTMLElement): string {
  * Scores candidates by specificity — prefers the innermost meaningful panel.
  */
 function findCommentTarget(el: HTMLElement, boundary: HTMLElement | null) {
+  // Keep anchors inside transient surfaces; prefer the actual clicked control.
+  const control = el.closest('button, input, textarea, select, a, [role="button"], [role="menuitem"], [data-comment-target]');
+  if (control instanceof HTMLElement) return { targetId: getElementId(control), targetLabel: getElementLabel(control), element: control };
+  const surface = el.closest(SURFACE_SELECTOR);
   let current: HTMLElement | null = el;
   const candidates: { el: HTMLElement; score: number; depth: number }[] = [];
   let depth = 0;
@@ -184,11 +158,12 @@ function findCommentTarget(el: HTMLElement, boundary: HTMLElement | null) {
       }
     }
 
+    if (current === surface) break;
     current = current.parentElement;
     depth++;
   }
 
-  if (candidates.length === 0) return null;
+  if (candidates.length === 0) return { targetId: getElementId(el), targetLabel: getElementLabel(el), element: el };
 
   // Prefer innermost among equally-scored candidates.
   // Among different scores: higher score wins, but add a bonus for being closer to the click.
@@ -219,31 +194,33 @@ function findCommentTarget(el: HTMLElement, boundary: HTMLElement | null) {
 }
 
 export function CommentOverlay() {
-  const { threads, commentMode, setCommentMode, user, addThread, activeThreadId, setActiveThreadId, brandColor } =
+  // Keep the original JSX.Element public signature while the implementation
+  // waits for a browser portal host (and returns null during server rendering).
+  return <CommentOverlayPortal />;
+}
+
+function CommentOverlayPortal() {
+  const { threads, loaded, storageError, commentMode, setCommentMode, user, addThread, activeThreadId, setActiveThreadId, sidebarOpen, setSidebarOpen, brandColor } =
     useApostil();
+  const portalHost = usePortalHost();
   const overlayRef = useRef<HTMLDivElement>(null);
   const [pendingPin, setPendingPin] = useState<PendingPin | null>(null);
   const [pendingPixel, setPendingPixel] = useState<{ left: number; top: number } | null>(null);
   const pendingRef = useRef<HTMLDivElement>(null);
-  const [pendingFlip, setPendingFlip] = useState<{ x: boolean; y: boolean }>({ x: false, y: false });
+  const pendingPlacement = usePopoverPosition(pendingPixel, overlayRef, pendingRef, !!pendingPin, sidebarOpen);
 
   const handleClick = useCallback(
-    (e: React.MouseEvent<HTMLDivElement>) => {
+    (e: PointerEvent) => {
       if (!commentMode || !overlayRef.current) return;
 
       const overlayRect = overlayRef.current.getBoundingClientRect();
 
-      // Find element below overlay using elementsFromPoint — skip all apostil elements
-      const overlay = overlayRef.current;
-      const elements = document.elementsFromPoint(e.clientX, e.clientY);
-      let elementBelow: HTMLElement | null = null;
-      for (const el of elements) {
-        if (el === overlay || overlay.contains(el)) continue;
-        if (el instanceof HTMLElement) {
-          elementBelow = el;
-          break;
-        }
-      }
+      if (!(e.target instanceof Element) || e.target.closest("[data-apostil-ui]")) return;
+      const elementBelow = e.target instanceof HTMLElement ? e.target : e.target.parentElement;
+      if (!elementBelow) return;
+      // Capture before app handlers so selecting a control does not activate or dismiss it.
+      e.preventDefault();
+      e.stopImmediatePropagation();
 
       debug.log(" click at", { clientX: e.clientX, clientY: e.clientY });
       debug.log(" element below overlay:", elementBelow);
@@ -278,7 +255,7 @@ export function CommentOverlay() {
           relativePos: { x: x.toFixed(1), y: y.toFixed(1) },
           targetRect: { w: targetRect.width, h: targetRect.height },
         });
-        setPendingPin({ x, y, targetId: target.targetId, targetLabel: target.targetLabel });
+        setPendingPin({ x, y, targetId: target.targetId, targetLabel: target.targetLabel, context: captureContext(elementBelow, target.element) });
       } else {
         const x = ((e.clientX - overlayRect.left) / overlayRect.width) * 100;
         const y = ((e.clientY - overlayRect.top) / overlayRect.height) * 100;
@@ -298,6 +275,25 @@ export function CommentOverlay() {
     [commentMode, setActiveThreadId]
   );
 
+  useEffect(() => {
+    if (!commentMode || !user || !loaded) return;
+    if (!pendingPin) document.addEventListener("pointerdown", handleClick, true);
+    const blockActivation = (e: MouseEvent) => {
+      if (e.target instanceof Element && !e.target.closest("[data-apostil-ui]")) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+      }
+    };
+    document.addEventListener("click", blockActivation, true);
+    return () => {
+      document.removeEventListener("pointerdown", handleClick, true);
+      document.removeEventListener("click", blockActivation, true);
+    };
+  }, [commentMode, user, loaded, pendingPin, handleClick]);
+
+  // A page change also leaves comment mode, so this covers both.
+  useEffect(() => { if (!commentMode) { setPendingPin(null); setPendingPixel(null); } }, [commentMode]);
+
   const handleNewComment = useCallback(
     (body: string) => {
       if (!pendingPin) return;
@@ -308,59 +304,48 @@ export function CommentOverlay() {
         targetLabel: pendingPin.targetLabel ?? "(none)",
         body,
       });
-      addThread(pendingPin.x, pendingPin.y, body, pendingPin.targetId, pendingPin.targetLabel);
+      addThread(pendingPin.x, pendingPin.y, body, pendingPin.targetId, pendingPin.targetLabel, pendingPin.context);
       setPendingPin(null);
       setPendingPixel(null);
     },
     [pendingPin, addThread]
   );
 
-  // Calculate flip based on click position relative to viewport
+  // Open thread from URL hash (e.g. #apostil-threadId), on load and when only the hash changes.
   useEffect(() => {
-    if (!pendingPixel || !overlayRef.current) return;
-    const overlayRect = overlayRef.current.getBoundingClientRect();
-    const clickX = overlayRect.left + pendingPixel.left;
-    const clickY = overlayRect.top + pendingPixel.top;
-    // Popover is w-72 (288px) + 20px margin, ~200px tall
-    setPendingFlip({
-      x: clickX + 308 > window.innerWidth,
-      y: clickY + 200 > window.innerHeight,
-    });
-  }, [pendingPixel, overlayRef]);
-
-  // Open thread from URL hash (e.g. #apostil-threadId)
-  useEffect(() => {
-    const hash = window.location.hash;
-    debug.log("hash check:", hash, "threads:", threads.length);
-    if (!hash.startsWith("#apostil-")) return;
-    const threadId = hash.replace("#apostil-", "");
-    debug.log("looking for thread:", threadId);
-    // Wait for threads to load before activating
-    if (threads.length === 0) {
-      debug.log("no threads loaded yet, waiting...");
-      return;
-    }
-    const found = threads.find((t) => t.id === threadId);
-    debug.log("found thread:", found ? "yes" : "no");
-    if (found) {
-      setActiveThreadId(threadId);
+    const open = () => {
+      const hash = window.location.hash;
+      debug.log("hash check:", hash, "threads:", threads.length);
+      if (!hash.startsWith("#apostil-")) return;
+      // Threads that have not loaded yet are picked up when this effect reruns.
+      const found = threads.find((t) => t.id === hash.replace("#apostil-", ""));
+      debug.log("found thread:", found ? "yes" : "no");
+      if (!found) return;
+      setActiveThreadId(found.id);
+      // Without its anchor the thread has no pin or popover, so show it in the list instead.
+      if (!scrollToThread(found)) setSidebarOpen(true);
       // Clean hash from URL without triggering navigation
-      window.history.replaceState(null, "", window.location.pathname);
-    }
-  }, [threads, setActiveThreadId]);
+      window.history.replaceState(null, "", window.location.pathname + window.location.search);
+    };
+    open();
+    window.addEventListener("hashchange", open);
+    return () => window.removeEventListener("hashchange", open);
+  }, [threads, setActiveThreadId, setSidebarOpen]);
 
   // Keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement)?.tagName;
+      // The event target is retargeted to the host for inputs inside shadow DOM.
+      const target = e.composedPath()[0] as HTMLElement;
 
       // Escape always works — even when typing
       if (e.key === "Escape") {
+        if (pendingPin || activeThreadId || commentMode) { e.preventDefault(); e.stopImmediatePropagation(); }
         if (pendingPin) {
-          setPendingPin(null);
-          setPendingPixel(null);
           setCommentMode(false);
         } else if (activeThreadId) {
+          // The composer about to unmount holds focus; hand it back to the pin it opened from.
+          if (document.activeElement?.closest('[data-apostil-ui="thread"]')) Array.from(overlayRef.current!.querySelectorAll<HTMLElement>("[data-thread]")).find(pin => pin.dataset.thread === activeThreadId)?.focus({ preventScroll: true });
           setActiveThreadId(null);
         } else if (commentMode) {
           setCommentMode(false);
@@ -369,7 +354,7 @@ export function CommentOverlay() {
       }
 
       // Other shortcuts only when not typing, and not with modifier keys (Cmd+C, Ctrl+C, etc.)
-      if (tag === "INPUT" || tag === "TEXTAREA") return;
+      if (["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName) || target.isContentEditable) return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
 
       if (e.key === "c" || e.key === "C") {
@@ -384,30 +369,35 @@ export function CommentOverlay() {
         }
       }
     };
-    document.addEventListener("keydown", handler);
-    return () => document.removeEventListener("keydown", handler);
+    document.addEventListener("keydown", handler, true);
+    return () => document.removeEventListener("keydown", handler, true);
   }, [commentMode, pendingPin, activeThreadId, setCommentMode, setActiveThreadId]);
 
   // Only show unresolved threads as pins — resolved ones live in the sidebar
   const visibleThreads = threads
-    .filter((t) => !t.resolved)
+    .filter((t) => !t.resolved || t.id === activeThreadId)
     .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
 
   // When user prompt is showing, disable the overlay click handling
   const showingUserPrompt = commentMode && !user;
 
-  return (
+  if (!portalHost) return null;
+  return createPortal(
     <>
+      {commentMode && user && loaded && !pendingPin && (
+        <style data-apostil-ui="cursor">{`
+          body, body *:not([data-apostil-ui], [data-apostil-ui] *) {
+            cursor: crosshair !important;
+          }
+          [data-apostil-ui] { cursor: auto; }
+        `}</style>
+      )}
       {/* Overlay layer */}
       <div
         ref={overlayRef}
-        className={`fixed inset-0 ${
-          commentMode && !showingUserPrompt
-            ? "cursor-crosshair pointer-events-auto"
-            : "pointer-events-none"
-        }`}
-        style={{ zIndex: commentMode ? getHighestZIndex() + 10 : 55 }}
-        onMouseDown={handleClick}
+        data-apostil-ui="overlay"
+        className="fixed inset-0 pointer-events-none"
+        style={{ zIndex: 2147483640 }}
       >
         {/* Existing pins */}
         {visibleThreads.map((thread, i) => (
@@ -425,34 +415,44 @@ export function CommentOverlay() {
               left: pendingPixel.left,
               top: pendingPixel.top,
             }}
+            onPointerDown={(e) => e.stopPropagation()}
             onMouseDown={(e) => e.stopPropagation()}
             onClick={(e) => e.stopPropagation()}
           >
             <div
               className="absolute -translate-x-1/2 -translate-y-1/2 w-7 h-7 rounded-full
                          flex items-center justify-center text-white text-xs font-semibold
-                         shadow-lg ring-2 ring-white ring-offset-2 animate-bounce"
+                         shadow-lg ring-2 ring-white ring-offset-2 animate-bounce motion-reduce:animate-none"
               style={{ backgroundColor: user.color }}
             >
               +
             </div>
             <div
               ref={pendingRef}
-              className="absolute w-72"
+              data-apostil-ui="new-comment"
+              className="absolute"
               style={{
-                marginLeft: pendingFlip.x ? -308 : 20,
-                marginTop: pendingFlip.y ? undefined : -12,
-                ...(pendingFlip.y ? { bottom: 0 } : {}),
+                left: (pendingPlacement?.left ?? pendingPixel.left) - pendingPixel.left,
+                top: (pendingPlacement?.top ?? pendingPixel.top) - pendingPixel.top,
+                width: "min(288px, calc(100vw - 24px))",
+                maxWidth: pendingPlacement?.maxWidth,
+                maxHeight: pendingPlacement?.maxHeight,
+                overflowY: "auto",
+                visibility: pendingPlacement ? "visible" : "hidden",
+                boxSizing: "border-box",
               }}
             >
               <div className="bg-white rounded-xl shadow-2xl border border-neutral-200 p-3">
-                <div className="flex items-center gap-2 mb-2">
+                <div className="flex flex-wrap items-center gap-2 mb-2">
                   <p className="text-xs text-neutral-500">New comment</p>
                   {pendingPin.targetLabel && (
-                    <span className="text-[10px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded font-medium">
+                    <span className="text-[10px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded font-medium break-words min-w-0">
                       {pendingPin.targetLabel}
                     </span>
                   )}
+                  <button type="button" onClick={() => setCommentMode(false)} className="ml-auto p-1 rounded hover:bg-neutral-200 transition-colors" title="Cancel comment" aria-label="Cancel comment">
+                    <X className="w-3.5 h-3.5 text-neutral-500" />
+                  </button>
                 </div>
                 <CommentComposer
                   onSubmit={handleNewComment}
@@ -463,22 +463,21 @@ export function CommentOverlay() {
             </div>
           </div>
         )}
-      </div>
-
-      {/* Comment mode hint */}
-      {commentMode && !pendingPin && !showingUserPrompt && (
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[60] pointer-events-none">
-          <div
-            className="text-white text-sm px-4 py-2 rounded-full backdrop-blur-sm"
-            style={{ backgroundColor: `color-mix(in oklab, ${brandColor} 80%, transparent)` }}
-          >
-            Click anywhere to add a comment
+        {/* Comment mode hint */}
+        {commentMode && !pendingPin && !showingUserPrompt && (loaded || storageError) && (
+          <div data-apostil-ui="hint" role="status" className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[60] pointer-events-none">
+            <div
+              className="text-white text-sm px-4 py-2 rounded-full backdrop-blur-sm"
+              style={{ backgroundColor: `color-mix(in oklab, ${brandColor} 80%, transparent)` }}
+            >
+              {loaded ? "Click to comment · Esc to interact with the page" : storageError}
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* User prompt — rendered above overlay so clicks work */}
       <UserPrompt />
-    </>
+    </>, portalHost
   );
 }

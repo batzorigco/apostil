@@ -1,378 +1,205 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { X, Check, Undo2, MessageSquare, Globe, FileText } from "../icons";
+import { useState, useEffect, useRef, type ReactNode } from "react";
+import { MCPSettings } from "./mcp-settings";
+import { SidebarIcon } from "./sidebar-icon";
+import { CommentComposer } from "./comment-composer";
 import { useApostil } from "../context";
-import type { ApostilThread } from "../types";
+import type { ApostilComment, ApostilThread } from "../types";
+import { getTaskStatus } from "../task-status";
+import { TaskStatusBadge, TaskStatusSelect, TaskUpdateDetails } from "./task-status";
+import { ViewportPortal } from "./viewport-portal";
+import { scrollToThread, threadLocationHint } from "../thread-navigation";
 
 function timeAgo(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return "just now";
+  const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+  if (!Number.isFinite(mins) || mins < 1) return "just now";
   if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
-}
-
-function pageIdToDisplay(pageId: string): string {
-  return pageId.replace(/--/g, "/").replace(/-/g, ".");
+  if (mins < 1440) return `${Math.floor(mins / 60)}h ago`;
+  return `${Math.floor(mins / 1440)}d ago`;
 }
 
 type AllPagesData = { pageId: string; threads: ApostilThread[] }[];
 
 export function CommentSidebar() {
-  const {
-    threads,
-    sidebarOpen,
-    setSidebarOpen,
-    setActiveThreadId,
-    resolveThread,
-    brandColor,
-  } = useApostil();
-
+  const { threads, pageId, mcpEndpoint, loadAllThreads, storageError, refreshThreads,
+    sidebarOpen, setSidebarOpen, activeThreadId, setActiveThreadId, commentMode, brandColor } = useApostil();
+  const ref = useRef<HTMLDivElement>(null);
   const [tab, setTab] = useState<"page" | "all">("page");
   const [allPages, setAllPages] = useState<AllPagesData>([]);
   const [loadingAll, setLoadingAll] = useState(false);
-
-  // Fetch all pages when "All Pages" tab is selected
+  const [refreshing, setRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState("");
+  const [locationHint, setLocationHint] = useState("");
+  const selectThread = (thread: ApostilThread) => {
+    if (thread.pageId !== pageId) {
+      let route = thread.pageId === "home" ? "/" : "/" + thread.pageId.replace(/--/g, "/");
+      if (thread.context?.url) { try { route = new URL(thread.context.url).pathname; } catch { /* Legacy fallback. */ } }
+      // Same path and no query means the host picks its page from state a link cannot reach; the hash waits for that page.
+      if (route === window.location.pathname && !window.location.search) setLocationHint(`This comment is on “${thread.pageId}”. Switch to that view to open it.`);
+      window.location.href = route + "#apostil-" + encodeURIComponent(thread.id);
+      return;
+    }
+    if (activeThreadId === thread.id) {
+      setActiveThreadId(null);
+      setLocationHint("");
+      return;
+    }
+    setActiveThreadId(thread.id);
+    setLocationHint(scrollToThread(thread) ? "" : threadLocationHint(thread));
+  };
+  useEffect(() => { setLocationHint(""); }, [pageId, sidebarOpen]);
+  useEffect(() => {
+    if (!sidebarOpen) return;
+    const opener = document.activeElement as HTMLElement | null;
+    ref.current?.focus({ preventScroll: true });
+    return () => opener?.focus({ preventScroll: true });
+  }, [sidebarOpen]);
+  useEffect(() => {
+    if (!sidebarOpen) return;
+    const menus = () => Array.from(ref.current?.querySelectorAll<HTMLDetailsElement>(".apostil-thread-actions[open]") ?? []);
+    // Window capture runs before the overlay's document listeners, so a menu closes before its thread does.
+    const key = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      const open = menus();
+      if (open.length) open.forEach(menu => { menu.open = false; menu.querySelector("summary")!.focus(); });
+      else if (!activeThreadId && !commentMode && ref.current?.contains(document.activeElement)) setSidebarOpen(false);
+      else return;
+      e.preventDefault(); e.stopImmediatePropagation();
+    };
+    const press = (e: PointerEvent) => menus().forEach(menu => { if (!menu.contains(e.target as Node)) menu.open = false; });
+    window.addEventListener("keydown", key, true);
+    window.addEventListener("pointerdown", press, true);
+    return () => { window.removeEventListener("keydown", key, true); window.removeEventListener("pointerdown", press, true); };
+  }, [sidebarOpen, activeThreadId, commentMode, setSidebarOpen]);
   useEffect(() => {
     if (!sidebarOpen || tab !== "all") return;
-    setLoadingAll(true);
-
-    // Try CLI server first, then local API
-    async function fetchAll() {
-      // Fetch from the app's own API route (no pageId = returns all pages)
-      try {
-        const res = await fetch("/api/apostil");
-        if (res.ok) {
-          const data = await res.json();
-          setAllPages(data);
-        }
-      } catch {}
-      setLoadingAll(false);
-    }
-    fetchAll();
-  }, [sidebarOpen, tab]);
-
-  if (!sidebarOpen) return null;
-
-  const openThreads = threads.filter((t) => !t.resolved);
-  const resolvedThreads = threads.filter((t) => t.resolved);
-
-  return (
-    <div className="absolute top-0 right-0 bottom-0 w-80 z-[75] bg-white border-l border-neutral-200 shadow-xl flex flex-col">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-100">
-        <div className="flex items-center gap-2">
-          <MessageSquare className="w-4 h-4 text-neutral-500" />
-          <span className="text-sm font-semibold text-neutral-900">
-            Comments
-          </span>
-        </div>
-        <button
-          onClick={() => setSidebarOpen(false)}
-          className="p-1 rounded hover:bg-neutral-100 transition-colors"
-        >
-          <X className="w-4 h-4 text-neutral-500" />
-        </button>
+    let cancelled = false;
+    setLoadingAll(true); setLoadError(""); setAllPages([]);
+    if (!loadAllThreads) { setLoadError("This storage adapter does not support all pages."); setLoadingAll(false); return; }
+    loadAllThreads().then(pages => { if (!cancelled) setAllPages(pages); })
+      .catch(error => { if (!cancelled) setLoadError(error instanceof Error ? error.message : "Could not load comments."); })
+      .finally(() => { if (!cancelled) setLoadingAll(false); });
+    return () => { cancelled = true; };
+  }, [sidebarOpen, tab, loadAllThreads, pageId]);
+  const refresh = async () => {
+    setRefreshing(true);
+    try {
+      await refreshThreads();
+      if (tab === "all" && loadAllThreads) { setAllPages(await loadAllThreads()); setLoadError(""); }
+    } catch (error) { setLoadError(error instanceof Error ? error.message : "Could not refresh comments."); }
+    finally { setRefreshing(false); }
+  };
+  const pages = [...allPages.filter(page => page.pageId !== pageId), { pageId, threads }].filter(page => page.threads.length);
+  const openCount = threads.filter(t => !t.resolved).length;
+  const groups = [
+    { label: "Needs review", threads: threads.filter(t => getTaskStatus(t) === "needs_review") },
+    { label: "Open", threads: threads.filter(t => getTaskStatus(t) === "open") },
+    { label: "Completed", threads: threads.filter(t => getTaskStatus(t) === "completed") },
+  ];
+  return <ViewportPortal>
+    <div ref={ref} data-apostil-ui="sidebar" role="complementary" aria-label="Comments" tabIndex={-1} hidden={!sidebarOpen} style={{ zIndex: 2147483642, ...(!sidebarOpen ? { display: "none" } : {}) }}>
+      <div className="apostil-sidebar-header">
+        <SidebarIcon name="message" /><span>Comments</span>
+        <button type="button" className="apostil-icon-button" title="Refresh comments" aria-label="Refresh comments" disabled={refreshing} onClick={() => void refresh()}><SidebarIcon name="refresh" /></button>
+        <button type="button" className="apostil-icon-button" title="Close comments" aria-label="Close comments" onClick={() => setSidebarOpen(false)}><SidebarIcon name="close" /></button>
       </div>
-
-      {/* Tabs */}
-      <div className="flex border-b border-neutral-100">
-        <button
-          onClick={() => setTab("page")}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-medium transition-colors ${
-            tab === "page"
-              ? "border-b-2"
-              : "text-neutral-400 hover:text-neutral-600"
-          }`}
-          style={tab === "page" ? { color: brandColor, borderColor: brandColor } : undefined}
-        >
-          <FileText className="w-3 h-3" />
-          This Page
-          {openThreads.length > 0 && (
-            <span className="text-[10px] bg-red-50 text-red-600 px-1.5 py-px rounded-full">
-              {openThreads.length}
-            </span>
-          )}
+      <div className="apostil-sidebar-tabs" role="tablist" aria-label="Comment scope" onKeyDown={e => {
+        if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+        setTab(tab === "page" ? "all" : "page");
+        e.currentTarget.querySelector<HTMLElement>('[aria-selected="false"]')!.focus();
+      }}>
+        <button type="button" role="tab" aria-selected={tab === "page"} tabIndex={tab === "page" ? 0 : -1} onClick={() => setTab("page")} style={tab === "page" ? { color: brandColor, borderBottomColor: brandColor } : undefined}>
+          <SidebarIcon name="file" />This Page{openCount > 0 && <span className="apostil-count">{openCount}</span>}
         </button>
-        <button
-          onClick={() => setTab("all")}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-medium transition-colors ${
-            tab === "all"
-              ? "border-b-2"
-              : "text-neutral-400 hover:text-neutral-600"
-          }`}
-          style={tab === "all" ? { color: brandColor, borderColor: brandColor } : undefined}
-        >
-          <Globe className="w-3 h-3" />
-          All Pages
-        </button>
+        <button type="button" role="tab" aria-selected={tab === "all"} tabIndex={tab === "all" ? 0 : -1} onClick={() => setTab("all")} style={tab === "all" ? { color: brandColor, borderBottomColor: brandColor } : undefined}><SidebarIcon name="globe" />All Pages</button>
       </div>
-
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto">
-        {tab === "page" ? (
-          <PageThreads
-            threads={threads}
-            openThreads={openThreads}
-            resolvedThreads={resolvedThreads}
-            onSelect={setActiveThreadId}
-            onResolve={resolveThread}
-          />
-        ) : (
-          <AllPagesView
-            pages={allPages}
-            loading={loadingAll}
-          />
-        )}
+      <div className="apostil-sidebar-list" role="tabpanel" aria-label={tab === "page" ? "This Page" : "All Pages"}>
+        {storageError && <p role="alert" className="apostil-sidebar-error">{storageError} Refresh to retry.</p>}
+        {loadError && <p role="alert" className="apostil-sidebar-error">{loadError}</p>}
+        {locationHint && <p role="status" className="apostil-sidebar-hint">{locationHint}</p>}
+        {tab === "page" ? <>
+          {!threads.length && <p className="apostil-sidebar-empty">No comments on this page.</p>}
+          {groups.filter(group => group.threads.length).map(group => <ThreadGroup key={group.label} label={`${group.label} (${group.threads.length})`}>
+            {group.threads.map(thread => <ThreadItem key={`${thread.pageId}:${thread.id}`} thread={thread} onSelect={() => selectThread(thread)} />)}
+          </ThreadGroup>)}
+        </> : loadingAll ? <p className="apostil-sidebar-empty">Loading...</p> : <>
+          {!pages.length && !loadError && <p className="apostil-sidebar-empty">No comments in this project yet.</p>}
+          {!!pages.length && <p className="apostil-sidebar-hint">{pages.reduce((sum, page) => sum + page.threads.filter(t => !t.resolved).length, 0)} open across {pages.length} pages</p>}
+          {pages.map(page => <ThreadGroup key={page.pageId} label={page.pageId.replace(/--/g, "/")}>
+            {[...page.threads].sort((a, b) => Number(a.resolved) - Number(b.resolved) || Number(getTaskStatus(b) === "needs_review") - Number(getTaskStatus(a) === "needs_review")).map(thread => <ThreadItem key={`${thread.pageId}:${thread.id}`} thread={thread} onSelect={() => selectThread(thread)} />)}
+          </ThreadGroup>)}
+        </>}
       </div>
+      {sidebarOpen && <MCPSettings endpoint={mcpEndpoint} />}
     </div>
-  );
+  </ViewportPortal>;
 }
 
-// --- This Page tab ---
-
-function PageThreads({
-  threads,
-  openThreads,
-  resolvedThreads,
-  onSelect,
-  onResolve,
-}: {
-  threads: ApostilThread[];
-  openThreads: ApostilThread[];
-  resolvedThreads: ApostilThread[];
-  onSelect: (id: string) => void;
-  onResolve: (id: string) => void;
-}) {
-  if (threads.length === 0) {
-    return (
-      <div className="p-6 text-center text-sm text-neutral-400">
-        No comments on this page.
-      </div>
-    );
-  }
-
-  return (
-    <>
-      {openThreads.length > 0 && (
-        <div>
-          <div className="px-4 py-2 text-[10px] font-semibold text-neutral-400 uppercase tracking-wider">
-            Open ({openThreads.length})
-          </div>
-          {openThreads.map((thread) => (
-            <ThreadItem
-              key={thread.id}
-              thread={thread}
-              onSelect={() => onSelect(thread.id)}
-              onResolve={() => onResolve(thread.id)}
-            />
-          ))}
-        </div>
-      )}
-
-      {resolvedThreads.length > 0 && (
-        <div>
-          <div className="px-4 py-2 text-[10px] font-semibold text-neutral-400 uppercase tracking-wider">
-            Resolved ({resolvedThreads.length})
-          </div>
-          {resolvedThreads.map((thread) => (
-            <ThreadItem
-              key={thread.id}
-              thread={thread}
-              onSelect={() => onSelect(thread.id)}
-              onResolve={() => onResolve(thread.id)}
-              resolved
-            />
-          ))}
-        </div>
-      )}
-    </>
-  );
+function ThreadGroup({ label, children }: { label: string; children: ReactNode }) {
+  const [expanded, setExpanded] = useState(true);
+  return <div className="apostil-thread-group">
+    <button type="button" className="apostil-group-toggle" aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>
+      <span className={expanded ? "" : "apostil-chevron-closed"}><SidebarIcon name="chevron" /></span>{label}
+    </button>
+    {expanded && children}
+  </div>;
 }
 
-// --- All Pages tab ---
-
-function AllPagesView({
-  pages,
-  loading,
-}: {
-  pages: AllPagesData;
-  loading: boolean;
-}) {
-  if (loading) {
-    return (
-      <div className="p-6 text-center text-sm text-neutral-400">
-        Loading...
-      </div>
-    );
-  }
-
-  if (pages.length === 0) {
-    return (
-      <div className="p-6 text-center text-sm text-neutral-400">
-        No comments in this project yet.
-      </div>
-    );
-  }
-
-  const totalOpen = pages.reduce((s, p) => s + p.threads.filter((t) => !t.resolved).length, 0);
-
-  return (
-    <>
-      {totalOpen > 0 && (
-        <div className="px-4 py-2 text-[10px] font-semibold text-neutral-400 uppercase tracking-wider">
-          {totalOpen} open across {pages.length} pages
-        </div>
-      )}
-
-      {pages.map((page) => {
-        const open = page.threads.filter((t) => !t.resolved);
-        const resolved = page.threads.filter((t) => t.resolved);
-        const displayName = pageIdToDisplay(page.pageId);
-
-        return (
-          <div key={page.pageId} className="border-b border-neutral-50">
-            {/* Page header */}
-            <div className="px-4 py-2.5 flex items-center justify-between bg-neutral-50/50">
-              <span className="text-xs font-semibold text-neutral-700 truncate">
-                {displayName}
-              </span>
-              <div className="flex items-center gap-1.5">
-                {open.length > 0 && (
-                  <span className="text-[10px] bg-red-50 text-red-600 px-1.5 py-px rounded-full font-medium">
-                    {open.length}
-                  </span>
-                )}
-                {resolved.length > 0 && (
-                  <span className="text-[10px] bg-neutral-100 text-neutral-500 px-1.5 py-px rounded-full font-medium">
-                    {resolved.length}
-                  </span>
-                )}
-              </div>
-            </div>
-
-            {/* Threads for this page */}
-            {[...open, ...resolved].map((thread) => {
-              const firstComment = thread.comments[0];
-              if (!firstComment) return null;
-              const isResolved = thread.resolved;
-
-              return (
-                <div
-                  key={thread.id}
-                  onClick={() => {
-                    // Navigate to the page with the comment hash
-                    const path = page.pageId === "home" ? "/" : "/" + page.pageId.replace(/--/g, "/");
-                    window.location.href = path + "#apostil-" + thread.id;
-                  }}
-                  className={`px-4 py-2.5 border-b border-neutral-50 cursor-pointer hover:bg-neutral-50 transition-colors ${
-                    isResolved ? "opacity-50" : ""
-                  }`}
-                >
-                  <div className="flex items-center justify-between mb-1">
-                    <div className="flex items-center gap-2">
-                      <div
-                        className="w-4 h-4 rounded-full flex items-center justify-center text-white text-[8px] font-semibold"
-                        style={{ backgroundColor: firstComment.author.color }}
-                      >
-                        {firstComment.author.name[0]?.toUpperCase()}
-                      </div>
-                      <span className="text-xs font-medium text-neutral-700">
-                        {firstComment.author.name}
-                      </span>
-                    </div>
-                    <span className="text-[10px] text-neutral-400">
-                      {timeAgo(firstComment.createdAt)}
-                    </span>
-                  </div>
-                  <p className="text-xs text-neutral-600 line-clamp-2 pl-6">
-                    {firstComment.body}
-                  </p>
-                  {thread.comments.length > 1 && (
-                    <span className="text-[10px] text-neutral-400 pl-6">
-                      {thread.comments.length - 1} {thread.comments.length - 1 === 1 ? "reply" : "replies"}
-                    </span>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        );
-      })}
-    </>
-  );
+function readSeen(key: string): string[] {
+  try { const saved = JSON.parse(localStorage.getItem(key) ?? "[]"); return Array.isArray(saved) && saved.every(id => typeof id === "string") ? saved : []; }
+  catch { return []; }
 }
 
-// --- Shared thread item ---
+function Author({ comment, children }: { comment: ApostilComment; children?: ReactNode }) {
+  return <div className="apostil-comment-author">
+    <span className="apostil-avatar" style={{ backgroundColor: comment.author.color }}>{comment.author.name[0]?.toUpperCase()}</span>
+    <span className="apostil-author-name">{comment.author.name}</span>{children}<time dateTime={comment.createdAt}>{timeAgo(comment.createdAt)}</time>
+  </div>;
+}
 
-function ThreadItem({
-  thread,
-  onSelect,
-  onResolve,
-  resolved,
-}: {
-  thread: { id: string; targetLabel?: string; comments: { author: { name: string; color: string }; body: string; createdAt: string }[] };
-  onSelect: () => void;
-  onResolve: () => void;
-  resolved?: boolean;
-}) {
-  const firstComment = thread.comments[0];
-  if (!firstComment) return null;
-
-  return (
-    <div
-      onClick={onSelect}
-      className={`px-4 py-3 border-b border-neutral-50 cursor-pointer hover:bg-neutral-50 transition-colors
-        ${resolved ? "opacity-60" : ""}`}
-    >
-      <div className="flex items-center justify-between mb-1">
-        <div className="flex items-center gap-2">
-          <div
-            className="w-4 h-4 rounded-full flex items-center justify-center text-white text-[8px] font-semibold"
-            style={{ backgroundColor: firstComment.author.color }}
-          >
-            {firstComment.author.name[0]?.toUpperCase()}
+function ThreadItem({ thread, onSelect }: { thread: ApostilThread; onSelect: () => void }) {
+  const { pageId, activeThreadId, addReply, resolveThread, user, sidebarOpen } = useApostil();
+  const local = thread.pageId === pageId;
+  const expanded = local && activeThreadId === thread.id;
+  const key = `apostil-seen:${JSON.stringify([thread.pageId, thread.id])}`;
+  const [seen, setSeen] = useState(() => readSeen(key));
+  useEffect(() => {
+    if (!expanded || !sidebarOpen) return;
+    const ids = thread.comments.slice(1).map(c => c.id);
+    setSeen(ids);
+    try { localStorage.setItem(key, JSON.stringify(ids)); } catch { /* Reading still works when browser storage is unavailable. */ }
+  }, [expanded, sidebarOpen, thread.comments, key]);
+  const first = thread.comments[0];
+  if (!first) return null;
+  const replies = thread.comments.slice(1);
+  const unread = replies.filter(c => c.author.id !== user?.id && !seen.includes(c.id)).length;
+  const replyCount = !expanded && unread ? unread : replies.length;
+  const label = thread.targetLabel || thread.context?.anchor.label || thread.targetId || "Page";
+  return <article className={`apostil-thread-card${expanded ? " is-expanded" : ""}`} tabIndex={0} aria-label={`Comment by ${first.author.name}`} onClick={onSelect}
+    onKeyDown={e => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onSelect(); } }}>
+    <div className="apostil-thread-messages">
+      <div className="apostil-comment-message">
+        <Author comment={first}>{getTaskStatus(thread) !== "open" && <TaskStatusBadge thread={thread} />}</Author>
+        {local && <details className="apostil-thread-actions" onClick={e => e.stopPropagation()}>
+          <summary aria-label="Task actions" title="Task actions">⋯</summary>
+          <div><TaskStatusSelect thread={thread} /><button type="button" aria-label={thread.resolved ? "Reopen task" : "Complete task"} onClick={() => resolveThread(thread.id)}>{thread.resolved ? "Reopen task" : "Complete task"}</button></div>
+        </details>}
+        <div className="apostil-comment-bubble">
+          <p>{first.body}</p><TaskUpdateDetails comment={first} />
+          <div className="apostil-comment-meta">
+            <span className="apostil-location" title={label}>In {label.startsWith("#") ? label : `#${label}`}</span>
+            <button type="button" className={`apostil-replies${!expanded && unread ? " has-unread" : ""}`} aria-expanded={expanded} onClick={e => { e.stopPropagation(); onSelect(); }}>
+              {replyCount ? `${replyCount}${!expanded && unread ? " new" : ""} ${replyCount === 1 ? "reply" : "replies"}` : "Reply"}
+              <span className={expanded ? "apostil-chevron-up" : ""}><SidebarIcon name={!expanded && unread ? "chevron-unread" : expanded ? "chevron-expanded" : "chevron"} /></span>
+            </button>
           </div>
-          <span className="text-xs font-medium text-neutral-700">
-            {firstComment.author.name}
-          </span>
-        </div>
-        <div className="flex items-center gap-1">
-          <span className="text-[10px] text-neutral-400">
-            {timeAgo(firstComment.createdAt)}
-          </span>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onResolve();
-            }}
-            className="p-0.5 rounded hover:bg-neutral-200 transition-colors"
-          >
-            {resolved ? (
-              <Undo2 className="w-3 h-3 text-neutral-400" />
-            ) : (
-              <Check className="w-3 h-3 text-emerald-600" />
-            )}
-          </button>
         </div>
       </div>
-      {thread.targetLabel && (
-        <span className="inline-block text-[10px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded font-medium ml-6 mb-1">
-          {thread.targetLabel}
-        </span>
-      )}
-      <p className="text-xs text-neutral-600 line-clamp-2 pl-6">
-        {firstComment.body}
-      </p>
-      {thread.comments.length > 1 && (
-        <span className="text-[10px] text-neutral-400 pl-6">
-          {thread.comments.length - 1} {thread.comments.length - 1 === 1 ? "reply" : "replies"}
-        </span>
-      )}
+      {expanded && replies.map(comment => <div className="apostil-comment-message" key={comment.id}>
+        <Author comment={comment} /><div className="apostil-comment-bubble"><p>{comment.body}</p><TaskUpdateDetails comment={comment} /></div>
+      </div>)}
     </div>
-  );
+    {expanded && user && !thread.resolved && <div className="apostil-reply-row" onClick={e => e.stopPropagation()}><CommentComposer compact onSubmit={body => addReply(thread.id, body)} placeholder="Reply..." /></div>}
+  </article>;
 }

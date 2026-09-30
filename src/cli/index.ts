@@ -2,6 +2,7 @@
 
 import fs from "fs/promises";
 import path from "path";
+import { parseArgs } from "node:util";
 
 type Mode = "personal" | "dev" | "public";
 type Framework = "nextjs" | "vite";
@@ -9,9 +10,15 @@ type Framework = "nextjs" | "vite";
 const args = process.argv.slice(2);
 const command = args[0];
 
+const fail = (error: unknown) => {
+  console.error(`apostil: ${error instanceof Error ? error.message : String(error)}`);
+  process.exitCode = 1;
+};
 if (command === "init") {
-  const mode = parseMode(args.slice(1));
-  init(mode);
+  init(parseMode(args.slice(1))).then(() => offerMCP(args.includes("--mcp"))).catch(fail);
+} else if (command === "mcp") {
+  const setup = args[1] === "init";
+  runMCPCommand(setup ? "init" : "mcp", args.slice(setup ? 2 : 1)).catch(fail);
 } else if (command === "remove") {
   remove();
 } else if (command === "help" || command === "--help" || command === "-h" || !command) {
@@ -32,8 +39,18 @@ function printHelp() {
   apostil — Lightweight, Figma-like commenting for React
 
   Usage:
-    npx apostil init [mode]   Set up apostil in your project
+    npx apostil init [mode]   Set up apostil in your project (--mcp also sets up MCP)
     npx apostil remove        Remove apostil from your project
+    npx apostil mcp init [claude|codex]   Install the MCP packages and connect an AI client
+    npx apostil mcp [options]             Run the local stdio MCP server
+
+  MCP options:
+    --project <path>    Project root (default: current directory)
+    --directory <path>  Comment folder inside the project (default: .apostil)
+    --read-only         Disable reply and task-update tools
+    --dry-run           Preview configuration (mcp init only)
+    --yes               Install missing MCP packages without asking (mcp init only)
+    --author <name>     Reply author (mcp only)
     npx apostil help          Show this help
 
   Modes:
@@ -44,6 +61,91 @@ function printHelp() {
   Supported frameworks: Next.js (App Router), Vite + React
   Framework is auto-detected from your project.
 `);
+}
+
+const MCP_PACKAGES = ["@modelcontextprotocol/sdk", "zod", "smol-toml"];
+
+async function ask(question: string) {
+  const { createInterface } = await import("node:readline/promises");
+  const prompt = createInterface({ input: process.stdin, output: process.stdout });
+  try { return (await prompt.question(question)).trim().toLowerCase(); }
+  finally { prompt.close(); }
+}
+
+// The MCP packages are optional peers so an overlay-only install stays light. `apostil mcp` is started by an AI client
+// with no terminal, so only the setup commands offer to install them.
+async function ensureMCPPackages(project: string, yes: boolean) {
+  const installed = (name: string) => fileExists(path.join(project, "node_modules", name, "package.json"));
+  const self = await fs.readFile(path.join(project, "package.json"), "utf-8").then(text => JSON.parse(text).name === "apostil", () => false);
+  // A copy fetched by npx cannot see packages installed in the project, and the generated entry needs the local one too.
+  if (!self && !await installed("apostil")) throw new Error("Install apostil in this project first (npm install apostil), then run: npx apostil mcp init");
+  const missing: string[] = [];
+  for (const name of MCP_PACKAGES) if (!await installed(name)) missing.push(name);
+  if (!missing.length) return true;
+  const has = (file: string) => fileExists(path.join(project, file));
+  const [manager, ...add] = await has("pnpm-lock.yaml") ? ["pnpm", "add", "-D"] : await has("yarn.lock") ? ["yarn", "add", "-D"]
+    : await has("bun.lock") || await has("bun.lockb") ? ["bun", "add", "-d"] : ["npm", "install", "-D"];
+  const install = [manager, ...add, ...missing].join(" ");
+  if (!yes && (!process.stdin.isTTY || (await ask(`  MCP needs ${missing.join(", ")} as dev dependencies. Install them now? [Y/n] `)).startsWith("n"))) {
+    console.log(`  MCP is not set up yet. Install the packages, then run this command again:\n\n    ${install}\n`);
+    return false;
+  }
+  const { spawnSync } = await import("node:child_process");
+  if (spawnSync(manager, [...add, ...missing], { cwd: project, stdio: "inherit", shell: process.platform === "win32" }).status !== 0) throw new Error(`Install failed. Run it yourself: ${install}`);
+  return true;
+}
+
+async function loadMCP<T>(load: () => Promise<T>) {
+  try { return await load(); }
+  catch (error) {
+    if (!(error as NodeJS.ErrnoException).code?.endsWith("MODULE_NOT_FOUND")) throw error;
+    throw new Error("The MCP packages are not installed in this project. Run: npx apostil mcp init");
+  }
+}
+
+async function offerMCP(flag: boolean) {
+  if (!flag && !(process.stdin.isTTY && (await ask("  Set up MCP so coding agents can work through your comments? [y/N] ")).startsWith("y"))) return;
+  await runMCPCommand("init", []);
+}
+
+async function runMCPCommand(command: "mcp" | "init", args: string[]) {
+  if (args.includes("--help") || args.includes("-h")) { printHelp(); return; }
+  const { values, positionals } = parseArgs({ args, allowPositionals: true, options: {
+    project: { type: "string", default: process.cwd() },
+    directory: { type: "string", default: ".apostil" },
+    "read-only": { type: "boolean", default: false },
+    "dry-run": { type: "boolean", default: false },
+    author: { type: "string", default: "AI reviewer" },
+    yes: { type: "boolean", default: false },
+  } });
+  if (command === "mcp" && values["dry-run"]) throw new Error("--dry-run is only supported by mcp init.");
+  if (!values.author.trim() || values.author.length > 100) throw new Error("Author must be 1–100 characters.");
+  const project = path.resolve(values.project as string);
+  const directory = values.directory as string;
+  // Validate directory boundaries even during connection setup.
+  const { CommentStore } = await import("../server/comment-store");
+  new CommentStore(project, directory);
+  if (command === "mcp") {
+    if (positionals.length) throw new Error("Usage: apostil mcp [--project <path>] [--directory <path>] [--read-only]");
+    const { startApostilMCP } = await loadMCP(() => import("../mcp/server"));
+    await startApostilMCP({ project, directory, readOnly: !!values["read-only"], author: values.author as string });
+    return;
+  }
+  let client = positionals[0];
+  if (!client && process.stdin.isTTY) client = await ask("  Connect Apostil to Claude or Codex? [claude/codex] ");
+  if (positionals.length > 1 || (client !== "claude" && client !== "codex")) throw new Error("Choose a client: apostil mcp init claude OR apostil mcp init codex");
+  if (!values["dry-run"] && !await ensureMCPPackages(project, !!values.yes)) { process.exitCode = 1; return; }
+  const { connectProject } = await loadMCP(() => import("../mcp/connect"));
+  const result = await connectProject({ project, directory, client, readOnly: !!values["read-only"], dryRun: !!values["dry-run"] });
+  if (values["dry-run"]) { console.log(`${result.filename}\n\n${result.content}`); return; }
+  console.log(`  ${result.changed ? "Configured" : "Already configured"}: ${result.filename}`);
+  console.log(`  Restart ${client === "claude" ? "Claude Code and approve the Apostil project server when prompted" : "Codex in this trusted project to load the server"}.`);
+  console.log('  Ask your AI: "Use Apostil to address my open UI comments."');
+  console.log(`  Comments: ${path.resolve(project, directory)}`);
+  if (await detectFramework(project) === "vite") {
+    console.log("  Vite: add apostilStoragePlugin() from apostil/adapters/vite to vite.config and use createRestAdapter('/api/apostil') in your wrapper.");
+    console.log("  Existing browser-only comments need importLocalComments(adapter) once. See docs/vite.md in the apostil package.");
+  }
 }
 
 // --- Framework detection ---
