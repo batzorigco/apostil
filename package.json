@@ -49,11 +49,6 @@
       "require": "./dist/adapters/nextjs.cjs"
     },
     "./styles.css": "./dist/styles.css",
-    "./adapters/agents": {
-      "types": "./dist/adapters/agents.d.ts",
-      "import": "./dist/adapters/agents.js",
-      "require": "./dist/adapters/agents.cjs"
-    },
     "./adapters/vite": {
       "types": "./dist/adapters/vite.d.ts",
       "import": "./dist/adapters/vite.js",

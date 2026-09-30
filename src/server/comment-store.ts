@@ -34,7 +34,7 @@ export class CommentStore {
     if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) throw new Error("Comment directory must be inside the project.");
   }
 
-  private async ensureDirectory(create = false) {
+  async ensureDirectory(create = false) {
     const root = await fs.realpath(this.project);
     const relative = path.relative(path.resolve(this.project), this.directory);
     let current = root;

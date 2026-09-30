@@ -26,7 +26,7 @@ function Demo() {
         <h2>Workspace settings</h2><p>Try comments on the page, inside a native dialog, and inside a nested popover.</p>
         <button className="demo-button" aria-controls="settings-dialog" onClick={() => dialog.current?.showModal()}>Open settings</button>
       </section>
-      <p>Connect your AI with <code>node bin/apostil.js connect codex</code> or <code>node bin/apostil.js connect claude</code>, then ask it to address your Apostil comments.</p>
+      <p>Open the comments sidebar and expand MCP to start the server and connect Claude Code or Codex. Then ask your AI to address your Apostil comments.</p>
       <ImportBrowserComments />
     </main>
     <dialog ref={dialog} id="settings-dialog" aria-label="Workspace settings">

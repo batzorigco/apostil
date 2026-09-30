@@ -37,6 +37,8 @@ export type ApostilThread = {
 };
 
 export type ApostilStorage = {
+  /** Optional same-origin development endpoint for MCP controls. */
+  mcpEndpoint?: string;
   load(pageId: string): Promise<ApostilThread[]>;
   save(pageId: string, threads: ApostilThread[]): Promise<void>;
   loadAll?(): Promise<ApostilPage[]>;
@@ -72,13 +74,3 @@ export type ApostilCaptureContext = {
   /** Outer to inner, including portal relationships through aria-controls. */
   surfaces: ApostilSurface[];
 };
-
-export type ApostilAIProvider = "codex" | "claude";
-export type ApostilAIRequest = {
-  version: 1;
-  requestId: string;
-  provider: ApostilAIProvider;
-  prompt: string;
-};
-export type ApostilAIResult = { message: string };
-export type ApostilAISender = (request: ApostilAIRequest) => Promise<ApostilAIResult>;

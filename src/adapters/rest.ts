@@ -9,6 +9,7 @@ export function createRestAdapter(baseUrl: string): ApostilStorage {
   const mergePages = new Set<string>();
   const writes = new Map<string, Promise<void>>();
   return {
+    mcpEndpoint: `${baseUrl}${baseUrl.includes("?") ? "&" : "?"}mcp=1`,
     async loadAll() {
       await Promise.all(writes.values());
       const res = await fetch(baseUrl);
@@ -19,41 +20,32 @@ export function createRestAdapter(baseUrl: string): ApostilStorage {
     },
     async load(pageId: string): Promise<ApostilThread[]> {
       const url = `${baseUrl}?pageId=${encodeURIComponent(pageId)}`;
-      try {
-        await writes.get(pageId);
-        const res = await fetch(url);
-        if (!res.ok) {
-          throw new Error(`Could not load comments (${res.status}).`);
-        }
-        const data = await res.json();
-        if (!Array.isArray(data)) throw new Error("Invalid comment response.");
-        if (res.headers.get("X-Apostil-Storage") === "merge-v1") mergePages.add(pageId);
-        baselines.set(pageId, data);
-        return data;
-      } catch (e) {
-        throw e;
+      await writes.get(pageId);
+      const res = await fetch(url);
+      if (!res.ok) {
+        throw new Error(`Could not load comments (${res.status}).`);
       }
+      const data = await res.json();
+      if (!Array.isArray(data)) throw new Error("Invalid comment response.");
+      if (res.headers.get("X-Apostil-Storage") === "merge-v1") mergePages.add(pageId);
+      baselines.set(pageId, data);
+      return data;
     },
 
     async save(pageId: string, threads: ApostilThread[]): Promise<void> {
       const url = `${baseUrl}?pageId=${encodeURIComponent(pageId)}`;
       const save = async () => {
-        try {
-          const res = await fetch(url, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(mergePages.has(pageId) ? { threads, base: baselines.get(pageId) ?? [] } : threads),
-          });
-          if (!res.ok) {
-            const data = await res.json().catch(() => null);
-            throw new Error(data?.error || `Could not save comments (${res.status}).`);
-          } else {
-            // This baseline is what the browser knows, not remote additions returned by the server.
-            baselines.set(pageId, threads);
-          }
-        } catch (e) {
-          throw e;
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(mergePages.has(pageId) ? { threads, base: baselines.get(pageId) ?? [] } : threads),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => null);
+          throw new Error(data?.error || `Could not save comments (${res.status}).`);
         }
+        // This baseline is what the browser knows, not remote additions returned by the server.
+        baselines.set(pageId, threads);
       };
       const pending = (writes.get(pageId) ?? Promise.resolve()).catch(() => {}).then(save);
       writes.set(pageId, pending);

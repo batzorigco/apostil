@@ -46,7 +46,7 @@ function printHelp() {
   MCP options:
     --project <path>    Project root (default: current directory)
     --directory <path>  Comment folder inside the project (default: .apostil)
-    --read-only         Disable AI replies
+    --read-only         Disable reply and task-update tools
     --dry-run           Preview configuration (connect only)
     --author <name>     Reply author (mcp only)
     npx apostil help          Show this help

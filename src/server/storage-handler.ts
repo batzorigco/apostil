@@ -1,16 +1,21 @@
 import { CommentStore, validateThreads } from "./comment-store";
 
-export function createStorageHandler(project: string, directory = ".apostil") {
+export function createStorageHandler(project: string, directory = ".apostil", mcp = false) {
   const store = new CommentStore(project, directory);
+  const dev = mcp && process.env.NODE_ENV !== "production"
+    ? import("../mcp/dev").then(({ getMCPDevController }) => getMCPDevController(project, directory)) : undefined;
+  const mcpRequest = async (request: Request) => dev ? (await dev).handle(request) : new Response(null, { status: 404 });
   const headers = { "X-Apostil-Storage": "merge-v1", "Cache-Control": "no-store" };
   return {
     async GET(request: Request) {
+      if (new URL(request.url).searchParams.has("mcp")) return mcpRequest(request);
       try {
         const pageId = new URL(request.url).searchParams.get("pageId");
         return Response.json(pageId ? await store.load(pageId) : await store.loadAll(), { headers });
       } catch (error) { return Response.json({ error: error instanceof Error ? error.message : "Could not read comments." }, { status: 500 }); }
     },
     async POST(request: Request) {
+      if (new URL(request.url).searchParams.has("mcp")) return mcpRequest(request);
       const pageId = new URL(request.url).searchParams.get("pageId");
       if (!pageId) return Response.json({ error: "Missing pageId" }, { status: 400 });
       try {

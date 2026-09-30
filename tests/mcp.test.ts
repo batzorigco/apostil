@@ -68,6 +68,12 @@ describe("real MCP stdio process", () => {
     const { client } = await connect(true);
     expect((await client.listTools()).tools.map(t => t.name)).toEqual(["list_comments", "get_comment_context"]);
     expect((await client.callTool({ name: "list_comments", arguments: { limit: 1000 } })).isError).toBe(true);
+    const resource = await client.readResource({ uri: "apostil://project" });
+    const prompt = await client.getPrompt({ name: "address_comments", arguments: {} });
+    for (const content of [client.getInstructions(), JSON.stringify(resource.contents), JSON.stringify(prompt.messages)]) {
+      expect(content).toContain("read-only");
+      expect(content).not.toMatch(/reply_to_comment|complete_task|request_review/);
+    }
   });
 });
 

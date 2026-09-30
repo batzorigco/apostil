@@ -9,23 +9,21 @@ import {
   useRef,
   type ReactNode,
 } from "react";
-import type { ApostilThread, ApostilUser, ApostilStorage, ApostilCaptureContext, ApostilPage, ApostilAISender, ApostilTaskStatus } from "./types";
+import type { ApostilThread, ApostilUser, ApostilStorage, ApostilCaptureContext, ApostilPage, ApostilTaskStatus } from "./types";
 import { createRestAdapter } from "./adapters/rest";
 import { generateId, loadUser, saveUser, getRandomColor } from "./utils";
-import { createAISender } from "./ai";
 import { debug } from "./debug";
 
 // Stable default adapter (created once, not per render)
-const defaultAISender = createAISender("/api/apostil/ai");
 const defaultAdapter = createRestAdapter("/api/apostil");
 
 type ApostilContextValue = {
+  mcpEndpoint?: string;
   pageId: string;
   loaded: boolean;
   storageError: string | null;
   refreshThreads: () => Promise<void>;
   loadAllThreads?: () => Promise<ApostilPage[]>;
-  sendToAI: ApostilAISender;
   threads: ApostilThread[];
   user: ApostilUser | null;
   commentMode: boolean;
@@ -50,13 +48,11 @@ export function ApostilProvider({
   pageId,
   storage,
   brandColor = "#171717",
-  onSendToAI = defaultAISender,
   children,
 }: {
   pageId: string;
   storage?: ApostilStorage;
   brandColor?: string;
-  onSendToAI?: ApostilAISender;
   children: ReactNode;
 }) {
   const adapter = storage ?? defaultAdapter;
@@ -201,7 +197,8 @@ export function ApostilProvider({
 
   return (
     <ApostilContext.Provider value={{
-      pageId, loaded, storageError, refreshThreads, loadAllThreads: adapter.loadAll ? loadAllThreads : undefined, sendToAI: onSendToAI,
+      mcpEndpoint: adapter.mcpEndpoint,
+      pageId, loaded, storageError, refreshThreads, loadAllThreads: adapter.loadAll ? loadAllThreads : undefined,
       threads, user, commentMode, activeThreadId, sidebarOpen, brandColor,
       setCommentMode, setActiveThreadId, setSidebarOpen,
       addThread, addReply, resolveThread, setTaskStatus, deleteThread, setUser,

@@ -2,8 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { X, Check, Undo2, MessageSquare, Globe, FileText } from "../icons";
+import { MCPSettings } from "./mcp-settings";
 import { CommentComposer } from "./comment-composer";
-import { AIHandoff } from "./ai-handoff";
 import { useApostil } from "../context";
 import type { ApostilThread } from "../types";
 import { getTaskStatus } from "../task-status";
@@ -31,7 +31,7 @@ type AllPagesData = { pageId: string; threads: ApostilThread[] }[];
 export function CommentSidebar() {
   const {
     threads,
-    pageId, loaded, loadAllThreads, storageError, refreshThreads,
+    pageId, mcpEndpoint, loadAllThreads, storageError, refreshThreads,
     sidebarOpen,
     setSidebarOpen,
     setActiveThreadId,
@@ -68,7 +68,6 @@ export function CommentSidebar() {
 
   // Use the latest in-memory edits for this page, including unsaved replies and deletions.
   const pages = [...allPages.filter(page => page.pageId !== pageId), { pageId, threads }];
-  const exportThreads = tab === "page" ? threads : pages.flatMap(page => page.threads);
 
   const openThreads = threads.filter((t) => !t.resolved);
   const resolvedThreads = threads.filter((t) => t.resolved);
@@ -156,7 +155,7 @@ export function CommentSidebar() {
             />
           )}
         </div>
-        <AIHandoff threads={exportThreads} scope={tab === "page" ? "this page" : "all pages"} disabled={!loaded || !!storageError || (tab === "all" && (loadingAll || !!loadError))} />
+        {sidebarOpen && <MCPSettings endpoint={mcpEndpoint} />}
       </div>
     </ViewportPortal>
   );

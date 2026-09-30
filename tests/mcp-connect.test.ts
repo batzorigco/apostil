@@ -55,3 +55,20 @@ it("CLI dry-run writes nothing and reports invalid options on stderr", async () 
   expect(await fs.readdir(project)).toEqual([]);
   expect(() => execFileSync(process.execPath, [cli, "mcp", "--unknown"], { stdio: "pipe" })).toThrow();
 });
+
+it.each(["claude", "codex"] as const)("migrates generated %s setup to HTTP and changes ports without duplicating servers", async client => {
+  const initial = await connectProject({ project, client, cliPath: cli });
+  const first = await connectProject({ project, client, url: "http://127.0.0.1:3846/mcp", updateGenerated: true });
+  const second = await connectProject({ project, client, url: "http://127.0.0.1:3847/mcp", updateGenerated: true });
+  const config = client === "claude" ? JSON.parse(second.content).mcpServers : (parse(second.content) as any).mcp_servers;
+  expect(Object.keys(config)).toEqual(["apostil"]);
+  expect(config.apostil.url).toBe("http://127.0.0.1:3847/mcp");
+  expect(config.apostil.command).toBeUndefined();
+  expect(await fs.readFile(`${first.filename}.apostil-backup`, "utf8")).toBe(initial.content);
+});
+
+it("does not replace a read-only connection with a writable HTTP server", async () => {
+  const initial = await connectProject({ project, client: "codex", cliPath: cli, readOnly: true });
+  await expect(connectProject({ project, client: "codex", url: "http://127.0.0.1:3846/mcp", updateGenerated: true })).rejects.toThrow("custom settings");
+  expect(await fs.readFile(initial.filename, "utf8")).toBe(initial.content);
+});

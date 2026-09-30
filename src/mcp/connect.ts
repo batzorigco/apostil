@@ -6,7 +6,9 @@ import { parse as parseToml } from "smol-toml";
 export type ConnectionOptions = {
   project: string;
   client: "claude" | "codex";
-  cliPath: string;
+  cliPath?: string;
+  url?: string;
+  updateGenerated?: boolean;
   directory?: string;
   readOnly?: boolean;
   dryRun?: boolean;
@@ -16,7 +18,8 @@ export type ConnectionOptions = {
 export async function connectProject(options: ConnectionOptions) {
   const project = await fs.realpath(options.project);
   const command = process.execPath;
-  const args = [await fs.realpath(options.cliPath), "mcp", "--project", project, "--author", options.client === "codex" ? "Codex" : "Claude"];
+  if (options.url && !/^http:\/\/127\.0\.0\.1:\d+\/mcp$/.test(options.url)) throw new Error("Expected a localhost MCP URL.");
+  const args = options.url ? [] : [await fs.realpath(options.cliPath!), "mcp", "--project", project, "--author", options.client === "codex" ? "Codex" : "Claude"];
   if (options.directory) args.push("--directory", options.directory);
   if (options.readOnly) args.push("--read-only");
   const filename = options.client === "claude" ? path.join(project, ".mcp.json") : path.join(project, ".codex", "config.toml");
@@ -29,16 +32,22 @@ export async function connectProject(options: ConnectionOptions) {
     if ((await fs.lstat(filename)).isSymbolicLink()) throw new Error("Refusing to edit a symlinked MCP config.");
     original = await fs.readFile(filename, "utf8");
   } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+  const conflict = () => new Error("An Apostil MCP entry already exists with custom settings. Review or remove that entry before reconnecting.");
+  const canUpdate = (entry: Record<string, any>) => options.url && options.updateGenerated && (
+    Object.keys(entry).every(k => ["type", "url"].includes(k)) && /^http:\/\/127\.0\.0\.1:\d+\/mcp$/.test(entry.url ?? "") ||
+    Object.keys(entry).every(k => ["type", "command", "args"].includes(k)) && entry.command === command &&
+    Array.isArray(entry.args) && /[/\\]bin[/\\]apostil\.js$/.test(entry.args[0] ?? "") && entry.args[1] === "mcp" && !entry.args.includes("--read-only")
+  );
   let content: string;
   if (options.client === "claude") {
     const config = original ? JSON.parse(original) : {};
     if (!config || typeof config !== "object" || Array.isArray(config) ||
       (config.mcpServers !== undefined && (!config.mcpServers || typeof config.mcpServers !== "object" || Array.isArray(config.mcpServers)))) throw new Error("Invalid .mcp.json; it has not been changed.");
-    const entry = { type: "stdio", command, args };
+    const entry = options.url ? { type: "http", url: options.url } : { type: "stdio", command, args };
     const existing = config.mcpServers?.apostil;
     if (existing) {
-      if (existing.command === command && JSON.stringify(existing.args) === JSON.stringify(args) && (!existing.type || existing.type === "stdio")) return { filename, content: original, changed: false };
-      throw new Error("An Apostil MCP entry already exists with different settings. Review or remove that entry before reconnecting.");
+      if (options.url ? existing.url === options.url && existing.type === "http" : existing.command === command && JSON.stringify(existing.args) === JSON.stringify(args) && (!existing.type || existing.type === "stdio")) return { filename, content: original, changed: false };
+      if (!canUpdate(existing)) throw conflict();
     }
     config.mcpServers = { ...config.mcpServers, apostil: entry };
     content = JSON.stringify(config, null, 2) + "\n";
@@ -48,11 +57,17 @@ export async function connectProject(options: ConnectionOptions) {
     if (servers !== undefined && (!servers || typeof servers !== "object" || Array.isArray(servers))) throw new Error("Invalid mcp_servers table; config.toml has not been changed.");
     const existing = (servers as Record<string, any> | undefined)?.apostil;
     if (existing) {
-      if (existing.command === command && JSON.stringify(existing.args) === JSON.stringify(args)) return { filename, content: original, changed: false };
-      throw new Error("An Apostil MCP entry already exists with different settings. Review or remove that entry before reconnecting.");
+      if (options.url ? existing.url === options.url : existing.command === command && JSON.stringify(existing.args) === JSON.stringify(args)) return { filename, content: original, changed: false };
+      if (!canUpdate(existing)) throw conflict();
     }
     // Append a table rather than reserializing users' comments and formatting.
-    content = `${original}${original.endsWith("\n") || !original ? "" : "\n"}\n[mcp_servers.apostil]\ncommand = ${JSON.stringify(command)}\nargs = ${JSON.stringify(args)}\n`;
+    const entry = options.url ? `url = ${JSON.stringify(options.url)}\n` : `command = ${JSON.stringify(command)}\nargs = ${JSON.stringify(args)}\n`;
+    if (existing) {
+      const previous = existing.url ? `url = ${JSON.stringify(existing.url)}\n` : `command = ${JSON.stringify(existing.command)}\nargs = ${JSON.stringify(existing.args)}\n`;
+      const block = `[mcp_servers.apostil]\n${previous}`;
+      if (!original.includes(block)) throw conflict();
+      content = original.replace(block, `[mcp_servers.apostil]\n${entry}`);
+    } else content = `${original}${original.endsWith("\n") || !original ? "" : "\n"}\n[mcp_servers.apostil]\n${entry}`;
     parseToml(content);
   }
   if (!options.dryRun) {
