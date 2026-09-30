@@ -4,6 +4,7 @@ import { useLayoutEffect, useState, type RefObject } from "react";
 
 type Point = { left: number; top: number };
 type Bounds = Point & { width: number; height: number };
+type Placement = Point & { maxWidth: number; maxHeight: number };
 
 /** Use anchor coordinates and size only, never the popup's previous placement. */
 export function placePopover(anchor: Point, size: { width: number; height: number }, viewport: Bounds): Point {
@@ -23,7 +24,7 @@ export function placePopover(anchor: Point, size: { width: number; height: numbe
 }
 
 export function usePopoverPosition(anchor: Point | null, overlayRef: RefObject<HTMLDivElement | null>, popupRef: RefObject<HTMLDivElement | null>, enabled: boolean, sidebarOpen = false) {
-  const [position, setPosition] = useState<Point | null>(null);
+  const [position, setPosition] = useState<Placement | null>(null);
   useLayoutEffect(() => {
     if (!enabled || !anchor) { setPosition(null); return; }
     const popup = popupRef.current;
@@ -37,12 +38,15 @@ export function usePopoverPosition(anchor: Point | null, overlayRef: RefObject<H
       const sidebar = sidebarOpen ? document.querySelector('[data-apostil-ui="sidebar"]')?.getBoundingClientRect() : null;
       // Leave room for both views when the screen is wide enough.
       if (sidebar && sidebar.left - left >= popup.offsetWidth + 24) width = Math.min(width, sidebar.left - left);
-      const next = placePopover({ left: origin.left + anchor.left, top: origin.top + anchor.top },
-        { width: popup.offsetWidth, height: popup.offsetHeight },
-        { left, top: viewport?.offsetTop ?? 0, width, height: viewport?.height ?? window.innerHeight });
+      const height = viewport?.height ?? window.innerHeight;
+      const maxWidth = Math.max(0, width - 24);
+      const maxHeight = Math.max(0, height - 24);
+      const next = { ...placePopover({ left: origin.left + anchor.left, top: origin.top + anchor.top },
+        { width: Math.min(popup.offsetWidth, maxWidth), height: Math.min(popup.offsetHeight, maxHeight) },
+        { left, top: viewport?.offsetTop ?? 0, width, height }), maxWidth, maxHeight };
       next.left -= origin.left;
       next.top -= origin.top;
-      setPosition(previous => previous?.left === next.left && previous?.top === next.top ? previous : next);
+      setPosition(previous => previous?.left === next.left && previous?.top === next.top && previous?.maxWidth === maxWidth && previous?.maxHeight === maxHeight ? previous : next);
     };
     update();
     const resize = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(update);

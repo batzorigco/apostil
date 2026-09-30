@@ -64,10 +64,11 @@ export function ApostilThreadPopover({
         top: placement?.top ?? pos.top,
         visibility: placement ? "visible" : "hidden",
         width: "min(320px, calc(100vw - 24px))",
+        maxWidth: placement?.maxWidth,
       }}
       onClick={(e) => e.stopPropagation()}
     >
-      <div className="w-full bg-white rounded-xl shadow-2xl border border-neutral-200 overflow-hidden flex flex-col" style={{ maxHeight: "calc(100dvh - 24px)", boxSizing: "border-box" }}>
+      <div className="w-full bg-white rounded-xl shadow-2xl border border-neutral-200 overflow-hidden flex flex-col" style={{ maxHeight: placement?.maxHeight ?? "calc(100dvh - 24px)", boxSizing: "border-box" }}>
         {/* Header */}
         <div className="flex items-center justify-between gap-2 px-4 py-2.5 border-b border-neutral-100 bg-neutral-50 shrink-0">
           <div className="flex flex-wrap min-w-0 items-center gap-2">

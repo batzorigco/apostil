@@ -11,6 +11,7 @@ import { CommentPin } from "./comment-pin";
 import { ApostilThreadPopover } from "./comment-thread";
 import { CommentComposer } from "./comment-composer";
 import { UserPrompt } from "./user-prompt";
+import { usePopoverPosition } from "./popover-position";
 
 type PendingPin = {
   x: number;
@@ -197,14 +198,14 @@ export function CommentOverlay() {
 }
 
 function CommentOverlayPortal() {
-  const { threads, pageId, loaded, commentMode, setCommentMode, user, addThread, activeThreadId, setActiveThreadId, brandColor } =
+  const { threads, pageId, loaded, commentMode, setCommentMode, user, addThread, activeThreadId, setActiveThreadId, sidebarOpen, brandColor } =
     useApostil();
   const [portalHost, setPortalHost] = useState<HTMLElement | null>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
   const [pendingPin, setPendingPin] = useState<PendingPin | null>(null);
   const [pendingPixel, setPendingPixel] = useState<{ left: number; top: number } | null>(null);
   const pendingRef = useRef<HTMLDivElement>(null);
-  const [pendingFlip, setPendingFlip] = useState<{ x: boolean; y: boolean }>({ x: false, y: false });
+  const pendingPlacement = usePopoverPosition(pendingPixel, overlayRef, pendingRef, !!pendingPin, sidebarOpen);
 
   const handleClick = useCallback(
     (e: PointerEvent) => {
@@ -318,19 +319,6 @@ function CommentOverlayPortal() {
     },
     [pendingPin, addThread]
   );
-
-  // Calculate flip based on click position relative to viewport
-  useEffect(() => {
-    if (!pendingPixel || !overlayRef.current) return;
-    const overlayRect = overlayRef.current.getBoundingClientRect();
-    const clickX = overlayRect.left + pendingPixel.left;
-    const clickY = overlayRect.top + pendingPixel.top;
-    // Popover is w-72 (288px) + 20px margin, ~200px tall
-    setPendingFlip({
-      x: clickX + 308 > window.innerWidth,
-      y: clickY + 200 > window.innerHeight,
-    });
-  }, [pendingPixel, overlayRef]);
 
   // Open thread from URL hash (e.g. #apostil-threadId)
   useEffect(() => {
@@ -451,18 +439,24 @@ function CommentOverlayPortal() {
             </div>
             <div
               ref={pendingRef}
-              className="absolute w-72"
+              data-apostil-ui="new-comment"
+              className="absolute"
               style={{
-                marginLeft: pendingFlip.x ? -308 : 20,
-                marginTop: pendingFlip.y ? undefined : -12,
-                ...(pendingFlip.y ? { bottom: 0 } : {}),
+                left: (pendingPlacement?.left ?? pendingPixel.left) - pendingPixel.left,
+                top: (pendingPlacement?.top ?? pendingPixel.top) - pendingPixel.top,
+                width: "min(288px, calc(100vw - 24px))",
+                maxWidth: pendingPlacement?.maxWidth,
+                maxHeight: pendingPlacement?.maxHeight,
+                overflowY: "auto",
+                visibility: pendingPlacement ? "visible" : "hidden",
+                boxSizing: "border-box",
               }}
             >
               <div className="bg-white rounded-xl shadow-2xl border border-neutral-200 p-3">
-                <div className="flex items-center gap-2 mb-2">
+                <div className="flex flex-wrap items-center gap-2 mb-2">
                   <p className="text-xs text-neutral-500">New comment</p>
                   {pendingPin.targetLabel && (
-                    <span className="text-[10px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded font-medium">
+                    <span className="text-[10px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded font-medium break-words min-w-0">
                       {pendingPin.targetLabel}
                     </span>
                   )}

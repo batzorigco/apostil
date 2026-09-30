@@ -171,3 +171,23 @@ it("marks replies read when expanded, avoids repeating the original comment, and
   fireEvent.click(screen.getByText("List"));
   expect(screen.getByRole("button", { name: "1 reply" })).toBeTruthy();
 });
+
+it("keeps the new-comment composer within a narrow screen instead of flipping off its left edge", async () => {
+  const originalWidth = window.innerWidth;
+  Object.defineProperty(window, "innerWidth", { configurable: true, value: 375 });
+  vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(288);
+  vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(180);
+  try {
+    render(<ApostilProvider pageId="mobile" storage={{ load: async () => [], save: async () => {} }}><Controls /><button id="mobile-target">Climate</button><CommentOverlay /></ApostilProvider>);
+    await waitFor(() => expect((screen.getByText("Comment") as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(screen.getByText("Comment"));
+    fireEvent(screen.getByText("Climate"), new MouseEvent("pointerdown", { bubbles: true, clientX: 110, clientY: 200 }));
+    const composer = screen.getByPlaceholderText("What's on your mind?").closest<HTMLElement>('[data-apostil-ui="new-comment"]')!;
+    // Its parent is at the pin's x=110, so -98 places the box at x=12.
+    expect(composer.style.left).toBe("-98px");
+    expect(composer.style.maxWidth).toBe("351px");
+    expect(composer.style.visibility).toBe("visible");
+  } finally {
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: originalWidth });
+  }
+});

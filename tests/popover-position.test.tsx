@@ -47,3 +47,34 @@ it("repositions when content grows without reading its already-positioned bounds
   expect(popup.style.top).toBe(`${window.innerHeight - 512}px`);
   expect(measure).toHaveBeenCalled();
 });
+
+it("fits the popup to the visible mobile viewport as the keyboard opens and pans", () => {
+  const visualViewport = Object.assign(new EventTarget(), { offsetLeft: 0, offsetTop: 0, width: 375, height: 667 });
+  vi.stubGlobal("visualViewport", visualViewport);
+  vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(288);
+  vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(180);
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({ left: 0, top: 0 } as DOMRect);
+  function Harness() {
+    const overlay = useRef<HTMLDivElement>(null);
+    const popup = useRef<HTMLDivElement>(null);
+    const placement = usePopoverPosition({ left: 110, top: 600 }, overlay, popup, true);
+    return <div ref={overlay}><div ref={popup} data-testid="popup" style={placement ?? {}} /></div>;
+  }
+  const view = render(<Harness />);
+  const popup = view.getByTestId("popup");
+  expect(popup.style.left).toBe("12px");
+  expect(popup.style.top).toBe("475px");
+  act(() => {
+    Object.assign(visualViewport, { offsetLeft: 20, offsetTop: 300, width: 260, height: 160 });
+    visualViewport.dispatchEvent(new Event("resize"));
+  });
+  expect(popup.style.left).toBe("32px");
+  expect(popup.style.top).toBe("312px");
+  expect(popup.style.maxWidth).toBe("236px");
+  expect(popup.style.maxHeight).toBe("136px");
+  act(() => {
+    visualViewport.offsetTop = 350;
+    visualViewport.dispatchEvent(new Event("scroll"));
+  });
+  expect(popup.style.top).toBe("362px");
+});
