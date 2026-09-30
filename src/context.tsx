@@ -85,6 +85,8 @@ export function ApostilProvider({
     setActiveThreadId(null);
     setCommentMode(false);
     hadThreadsRef.current = false;
+    deletedRef.current = [];
+    restoredRef.current = false;
     debug.log("loading threads for pageId:", pageId);
     adapter.load(pageId).then((t) => {
       // Only apply if pageId hasn't changed during the fetch
@@ -100,23 +102,33 @@ export function ApostilProvider({
 
   // Track whether we've ever had threads on this page (to know if empty means "deleted all")
   const hadThreadsRef = useRef(false);
+  const deletedRef = useRef<ApostilThread[]>([]);
+  const restoredRef = useRef(false);
 
   useEffect(() => {
     if (!loaded || loadedPageRef.current !== pageId) return;
     // Save when there are threads, or when threads were cleared (deletion)
-    if (threads.length > 0) {
-      hadThreadsRef.current = true;
-      debug.log("saving", threads.length, "threads for pageId:", pageId);
-      void adapter.save(pageId, threads).then(() => {
-        if (pageIdRef.current === pageId) setStorageError(null);
-      }).catch(error => { if (pageIdRef.current === pageId) setStorageError(error instanceof Error ? error.message : "Could not save comments."); });
-    } else if (hadThreadsRef.current) {
-      debug.log("saving empty threads for pageId:", pageId);
-      void adapter.save(pageId, threads).then(() => {
-        if (pageIdRef.current === pageId) setStorageError(null);
-      }).catch(error => { if (pageIdRef.current === pageId) setStorageError(error instanceof Error ? error.message : "Could not save comments."); });
-      hadThreadsRef.current = false;
-    }
+    if (threads.length === 0 && !hadThreadsRef.current) return;
+    hadThreadsRef.current = threads.length > 0;
+    debug.log("saving", threads.length, "threads for pageId:", pageId);
+    // Deletes made after this snapshot belong to a later save.
+    const later = (d: ApostilThread) => threads.some(t => t.id === d.id);
+    void adapter.save(pageId, threads).then(() => {
+      deletedRef.current = deletedRef.current.filter(later);
+      if (pageIdRef.current !== pageId) return;
+      // The save that puts a rejected delete back succeeds; keep the reason it was rejected on screen.
+      if (restoredRef.current) restoredRef.current = false;
+      else setStorageError(null);
+    }).catch(error => {
+      if (pageIdRef.current !== pageId) return;
+      setStorageError(error instanceof Error ? error.message : "Could not save comments.");
+      // A rejected delete is still in storage, so its pin must not stay hidden here.
+      const restore = deletedRef.current.filter(d => !later(d));
+      deletedRef.current = deletedRef.current.filter(later);
+      if (!restore.length) return;
+      restoredRef.current = true;
+      setThreads(prev => [...prev, ...restore.filter(d => !prev.some(t => t.id === d.id))].sort((a, b) => a.createdAt.localeCompare(b.createdAt)));
+    });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [threads, pageId, loaded]);
 
@@ -187,6 +199,7 @@ export function ApostilProvider({
   }, []);
 
   const deleteThread = useCallback((threadId: string) => {
+    deletedRef.current.push(...threadsRef.current.filter((t) => t.id === threadId));
     setThreads((prev) => prev.filter((t) => t.id !== threadId));
     setActiveThreadId(null);
   }, []);

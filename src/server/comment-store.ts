@@ -161,7 +161,8 @@ export class CommentStore {
         if (submitted.has(t.id)) continue;
         const original = baseline.get(t.id);
         if (!original) result.push(t);
-        else if (JSON.stringify(original) !== JSON.stringify(t)) throw new Error("This thread changed since you loaded it. Refresh before deleting it.");
+        // The merge above stores a derived status the browser's copy may lack, so compare content, not serialized form.
+        else if (!isDeepStrictEqual({ ...original, status: getTaskStatus(original) }, { ...t, status: getTaskStatus(t) })) throw new Error("This thread changed since you loaded it. Refresh before deleting it.");
       }
       return result;
     });

@@ -35,6 +35,15 @@ it("does not let a stale browser delete newly created threads or replies", async
   await store.save("home", [thread], [thread]);
   expect(await store.load("home")).toHaveLength(2);
 });
+it("lets a browser delete a thread after an earlier save stored a derived status on it", async () => {
+  const t2 = { ...thread, id: "t2", comments: [] };
+  await store.save("home", [thread], []);
+  await store.save("home", [thread, t2], [thread]);
+  expect((await store.load("home"))[0].status).toBe("open");
+  // The browser's baseline is its own copy, which never had the status key.
+  await store.save("home", [t2], [thread, t2]);
+  expect((await store.load("home")).map(t => t.id)).toEqual(["t2"]);
+});
 it("does not resurrect deleted threads from a stale page", async () => {
   await store.save("home", [thread]);
   await store.save("home", [], [thread]);

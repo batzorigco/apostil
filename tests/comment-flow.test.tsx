@@ -210,3 +210,22 @@ it("shows a distinct review pin and the agent reply after refreshing an MCP upda
   expect(screen.getAllByText("Adjusted spacing; tests pass.").length).toBeGreaterThan(0);
   expect(screen.getAllByText("Check the mobile layout.").length).toBeGreaterThan(0);
 });
+
+it("puts a thread back and keeps the reason when storage rejects its deletion", async () => {
+  const thread: ApostilThread = { id: "t1", pageId: "home", pinX: 50, pinY: 20, resolved: false, createdAt: "2026-01-01", comments: [{ id: "c1", threadId: "t1", author: { id: "u", name: "Reviewer", color: "red" }, body: "Keep me", createdAt: "2026-01-01" }] };
+  const save = vi.fn(async (_page: string, threads: ApostilThread[]) => { if (!threads.length) throw new Error("This thread changed since you loaded it."); });
+  function State() {
+    const { threads, storageError, addReply, deleteThread } = useApostil();
+    return <><p>{threads.length} threads</p><p>{storageError}</p><button onClick={() => addReply("t1", "More")}>Reply</button><button onClick={() => deleteThread("t1")}>Delete</button></>;
+  }
+  render(<ApostilProvider pageId="home" storage={{ load: async () => [thread], save }}><Controls /><State /></ApostilProvider>);
+  await screen.findByText("1 threads");
+  fireEvent.click(screen.getByText("Comment"));
+  fireEvent.click(screen.getByText("Delete"));
+  await screen.findByText("0 threads");
+  await screen.findByText("1 threads");
+  await waitFor(() => expect(save).toHaveBeenLastCalledWith("home", [thread]));
+  expect(screen.getByText("This thread changed since you loaded it.")).toBeTruthy();
+  fireEvent.click(screen.getByText("Reply"));
+  await waitFor(() => expect(screen.queryByText("This thread changed since you loaded it.")).toBeNull());
+});
